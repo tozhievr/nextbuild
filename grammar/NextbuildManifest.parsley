@@ -55,4 +55,4 @@ atom
   | Quoted <$> quoted
 
 example "empty" : "" parses-to Manifest []
-example "project" : "Project : NextOS" parses-to Manifest [Directive "Project" (Path (Word "NextOS") [])]
+example "project" : "Project : Demo" parses-to Manifest [Directive "Project" (Path (Word "Demo") [])]
