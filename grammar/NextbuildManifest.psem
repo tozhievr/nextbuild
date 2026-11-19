@@ -52,8 +52,8 @@ node Reference name where
   type = typeOf symbol
 
 node Directive name value where
-  require (name in ["Project", "Version", "SetBuildRoot", "SetSource", "SetStandard", "SetCompiler", "SetMinCompilerVer", "SetNextBuildDrawProgress", "EnableCompileFlag", "EnableLinkFlag", "AddModulePath", "AddDefine", "SetOutputName", "SetTargetTriple", "SetExecutableLayout", "SetProductKind", "SetLibraryKind", "EnableFeature", "UseDependency", "LinkLibrary", "Depend", "Dependency", "LibraryKind", "RequireProject"]) `orFail` NB_UNKNOWN { name = name }
-  require (name /= "SetNextBuildDrawProgress" || typeOf value == Boolean) `orFail` NB_BOOL { name = name }
+  require (name in ["Project", "Version", "SetBuildRoot", "SetSource", "SetStandard", "SetCompiler", "SetMinCompilerVer", "SetNextBuildDrawProgress", "EnableCompileFlag", "EnableLinkFlag", "AddModulePath", "AddDefine", "SetOutputName", "SetTargetTriple", "SetExecutableLayout", "SetProductKind", "SetLibraryKind", "SetGeneratePlatformModule", "EnableFeature", "UseDependency", "LinkLibrary", "Depend", "Dependency", "LibraryKind", "RequireProject"]) `orFail` NB_UNKNOWN { name = name }
+  require (not (name in ["SetNextBuildDrawProgress", "SetGeneratePlatformModule"]) || typeOf value == Boolean) `orFail` NB_BOOL { name = name }
   require (name /= "SetExecutableLayout" || typeOf value == Layout) `orFail` NB_LAYOUT { name = name }
   require (not (name in ["SetBuildRoot", "SetSource", "AddModulePath", "UseDependency", "LinkLibrary", "Depend", "RequireProject"]) || typeOf value == Scalar || typeOf value == PathValue) `orFail` NB_PATH { name = name }
   type = Unit

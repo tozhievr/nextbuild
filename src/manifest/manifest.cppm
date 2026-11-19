@@ -25,7 +25,7 @@ inline const Args project_directives{
     "Project", "Version", "SetBuildRoot", "SetSource", "SetStandard", "SetCompiler",
     "SetMinCompilerVer", "SetNextBuildDrawProgress", "EnableCompileFlag", "EnableLinkFlag",
     "AddModulePath", "AddDefine", "SetOutputName", "SetTargetTriple", "SetExecutableLayout",
-    "SetProductKind", "SetLibraryKind", "EnableFeature", "UseDependency", "LinkLibrary", "Depend"
+    "SetProductKind", "SetLibraryKind", "SetGeneratePlatformModule", "EnableFeature", "UseDependency", "LinkLibrary", "Depend"
 };
 inline const Args dependency_directives{
     "Dependency", "Version", "LibraryKind", "RequireProject", "AddModulePath", "LinkLibrary",

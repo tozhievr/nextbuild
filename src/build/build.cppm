@@ -28,7 +28,7 @@ struct Config {
     fs::path file, source, output_dir;
     std::string name = "Untitled", version = "0.0.0", output_name;
     std::string product, library, compiler = "clang++", minimum, standard = "c++20", triple;
-    bool progress = false;
+    bool progress = false, platform_module = false;
     Args flags, link_flags, defines, features;
     Paths modules, libraries, depends, dependencies;
     Layout layout;
@@ -248,8 +248,15 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
     fs::create_directories(obj_dir);
     fs::create_directories(pcm_dir);
     fs::create_directories(output_dir / "generated");
-    const auto generated = c.product == "library" ? generate(c) : fs::path{};
-    const auto units = collect(c.source, output_dir, generated);
+    fs::path generated;
+    auto units = collect(c.source, output_dir, {});
+    const bool imports_platform = std::ranges::any_of(units, [](const Unit& unit) {
+        return std::ranges::find(unit.imports, "cmake_generated") != unit.imports.end();
+    });
+    if (c.product == "library" && (c.platform_module || !c.features.empty() || imports_platform)) {
+        generated = generate(c);
+        units = collect(c.source, output_dir, generated);
+    }
     if (units.empty()) {
         if (!quiet) std::cout << "    warning: no module/asm sources found\n";
         return {};
@@ -582,10 +589,11 @@ Config load_config(const fs::path& file, const fs::path& root) {
             (c.*it->second).push_back(absolute(path_value(value), root));
         else if (item.name == "SetBuildRoot") c.output_dir = absolute(path_value(value), root);
         else if (item.name == "SetSource") c.source = absolute(path_value(value), root);
-        else if (item.name == "SetNextBuildDrawProgress") {
+        else if (item.name == "SetNextBuildDrawProgress" || item.name == "SetGeneratePlatformModule") {
             if (!std::holds_alternative<bool>(value))
                 throw std::runtime_error(item.name + " expects a boolean");
-            c.progress = std::get<bool>(value);
+            if (item.name == "SetGeneratePlatformModule") c.platform_module = std::get<bool>(value);
+            else c.progress = std::get<bool>(value);
         } else if (item.name == "SetExecutableLayout") {
             if (!std::holds_alternative<Layout>(value))
                 throw std::runtime_error(item.name + " expects a block");
