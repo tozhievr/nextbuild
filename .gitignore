@@ -1,2 +1,7 @@
 .aed/
 /build/
+/.build/
+/.nextbuild-git/
+/extension/node_modules/
+/compile_commands.json
+*.vsix

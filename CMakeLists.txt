@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.30)
-project(nextbuild VERSION 0.1.0 LANGUAGES C CXX)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" NEXTBUILD_VERSION LIMIT_COUNT 1)
+project(nextbuild VERSION "${NEXTBUILD_VERSION}" LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 include(CTest)
@@ -40,6 +42,7 @@ target_sources(nextbuild_core PUBLIC FILE_SET CXX_MODULES FILES
     src/lsp/server.cppm
 )
 target_link_libraries(nextbuild_core PRIVATE nextbuild_manifest_generated)
+target_compile_definitions(nextbuild_core PRIVATE NEXTBUILD_VERSION="${PROJECT_VERSION}")
 
 add_executable(nextbuild src/app/main.cpp)
 target_link_libraries(nextbuild PRIVATE nextbuild_core)

@@ -25,12 +25,12 @@ import nextbuild.process;
 namespace nb {
 using Paths = std::vector<fs::path>;
 struct Config {
-    fs::path file, source, output_dir;
+    fs::path file, source, output_dir, version_file;
     std::string name = "Untitled", version = "0.0.0", output_name;
     std::string product, library, compiler = "clang++", minimum, standard = "c++20", triple;
     bool progress = false, platform_module = false;
     Args flags, link_flags, defines, features;
-    Paths modules, libraries, depends, dependencies;
+    Paths modules, libraries, depends, dependencies, extra_sources;
     Layout layout;
 };
 fs::path absolute(fs::path value, const fs::path& root);
@@ -67,13 +67,13 @@ bool module_suffix(const fs::path& p) {
 bool source_suffix(const fs::path& p) {
     const auto suffix = p.extension();
     return assembly(p) || module_suffix(p) || suffix == ".cpp" || suffix == ".cc" ||
-           suffix == ".cxx" || suffix == ".c++";
+           suffix == ".cxx" || suffix == ".c++" || suffix == ".c";
 }
 Unit scan(const fs::path& file) {
     Unit unit;
     unit.file = file;
     unit.assembly = assembly(file);
-    if (unit.assembly) return unit;
+    if (unit.assembly || file.extension() == ".c") return unit;
     auto text = read(file);
     if (text.starts_with("\xef\xbb\xbf")) text.erase(0, 3);
     static const auto multiline = std::regex_constants::ECMAScript | std::regex_constants::multiline;
@@ -94,18 +94,21 @@ Unit scan(const fs::path& file) {
     if (!unit.bmi && !unit.module.empty()) unit.imports.push_back(unit.module);
     return unit;
 }
-std::vector<Unit> collect(const fs::path& source, const fs::path& build, const fs::path& generated) {
+std::vector<Unit> collect(const Paths& sources, const fs::path& build, const fs::path& generated) {
     Paths inputs;
-    if (fs::is_directory(source)) {
-        for (auto it = fs::recursive_directory_iterator(source); it != fs::recursive_directory_iterator{}; ++it) {
-            if (it->is_directory() && it->path() == build) it.disable_recursion_pending();
-            if (it->is_regular_file() && source_suffix(it->path())) inputs.push_back(it->path());
-        }
-    } else if (fs::is_regular_file(source)) {
-        if (source_suffix(source)) inputs.push_back(source);
-    } else throw std::runtime_error("source does not exist: " + utf8(source));
+    for (const auto& source : sources) {
+        if (fs::is_directory(source)) {
+            for (auto it = fs::recursive_directory_iterator(source); it != fs::recursive_directory_iterator{}; ++it) {
+                if (it->is_directory() && it->path() == build) it.disable_recursion_pending();
+                if (it->is_regular_file() && source_suffix(it->path())) inputs.push_back(it->path());
+            }
+        } else if (fs::is_regular_file(source)) {
+            if (source_suffix(source)) inputs.push_back(source);
+        } else throw std::runtime_error("source does not exist: " + utf8(source));
+    }
     if (!generated.empty() && std::ranges::find(inputs, generated) == inputs.end()) inputs.push_back(generated);
     std::ranges::sort(inputs);
+    inputs.erase(std::unique(inputs.begin(), inputs.end()), inputs.end());
     std::map<std::string, std::size_t> providers;
     std::vector<Unit> units, ordered;
     for (const auto& input : inputs) {
@@ -249,13 +252,15 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
     fs::create_directories(pcm_dir);
     fs::create_directories(output_dir / "generated");
     fs::path generated;
-    auto units = collect(c.source, output_dir, {});
+    Paths sources{c.source};
+    sources.insert(sources.end(), c.extra_sources.begin(), c.extra_sources.end());
+    auto units = collect(sources, output_dir, {});
     const bool imports_platform = std::ranges::any_of(units, [](const Unit& unit) {
         return std::ranges::find(unit.imports, "cmake_generated") != unit.imports.end();
     });
     if (c.product == "library" && (c.platform_module || !c.features.empty() || imports_platform)) {
         generated = generate(c);
-        units = collect(c.source, output_dir, generated);
+        units = collect(sources, output_dir, generated);
     }
     if (units.empty()) {
         if (!quiet) std::cout << "    warning: no module/asm sources found\n";
@@ -277,8 +282,16 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
     }
     std::size_t compiled = 0, done = 0;
     for (const auto& unit : units) {
-        auto relative = unit.file == generated ? fs::path("generated/cmake_generated.cppm") :
-            unit.file == c.source ? unit.file.filename() : unit.file.lexically_relative(c.source);
+        fs::path relative;
+        if (unit.file == generated) relative = "generated/cmake_generated.cppm";
+        else for (std::size_t i = 0; i < sources.size(); ++i) {
+            const auto& source = sources[i];
+            if (!within(unit.file, source)) continue;
+            relative = unit.file == source ? unit.file.filename() : unit.file.lexically_relative(source);
+            if (i) relative = fs::path("extra") / std::to_string(i) / relative;
+            break;
+        }
+        if (relative.empty()) throw std::logic_error("source is outside the configured source roots");
         relative.replace_extension(".o");
         auto object = obj_dir / relative;
         if (std::ranges::find(objects, object) != objects.end())
@@ -288,19 +301,21 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
         std::ranges::replace(bmi_name, ':', '-');
         const auto pcm = pcm_dir / path(bmi_name + ".pcm");
         auto args = driver;
-        if (!unit.assembly) args.push_back("-std=" + c.standard);
+        if (unit.file.extension() == ".c") args.insert(args.end(), {"-x", "c", "-std=c23"});
+        else if (!unit.assembly) args.push_back("-std=" + c.standard);
         const bool track_headers = !unit.assembly || unit.file.extension() == ".S";
         auto depfile = object;
         depfile += ".d";
         if (track_headers) args.insert(args.end(), {"-MD", "-MF", utf8(depfile), "-MT", "nextbuild-object"});
         args.insert(args.end(), c.flags.begin(), c.flags.end());
-        for (const auto& dir : c.modules) args.push_back("-fprebuilt-module-path=" + utf8(dir));
-        Paths inputs = external_pcms;
-        inputs.push_back(unit.file);
-        inputs.push_back(compiler);
-        for (const auto& [name, bmi] : pcms) {
-            args.push_back("-fmodule-file=" + name + "=" + utf8(bmi));
-            inputs.push_back(bmi);
+        Paths inputs{unit.file, compiler};
+        if (!unit.assembly && unit.file.extension() != ".c") {
+            for (const auto& dir : c.modules) args.push_back("-fprebuilt-module-path=" + utf8(dir));
+            inputs.insert(inputs.end(), external_pcms.begin(), external_pcms.end());
+            for (const auto& [name, bmi] : pcms) {
+                args.push_back("-fmodule-file=" + name + "=" + utf8(bmi));
+                inputs.push_back(bmi);
+            }
         }
         for (const auto& define : c.defines) args.push_back("-D" + define);
         if (module_suffix(unit.file)) args.insert(args.end(), {"-x", "c++-module"});
@@ -341,7 +356,8 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
         auto merged = database(root_db);
         std::erase_if(merged, [&](const auto& entry) {
             auto file = path(entry.first);
-            return within(file, c.source) || within(file, output_dir / "generated");
+            return within(file, output_dir / "generated") ||
+                std::ranges::any_of(sources, [&](const auto& source) { return within(file, source); });
         });
         for (const auto& [file, entry] : commands) merged.insert_or_assign(file, entry);
         save_database(root_db, merged);
@@ -589,6 +605,8 @@ Config load_config(const fs::path& file, const fs::path& root) {
             (c.*it->second).push_back(absolute(path_value(value), root));
         else if (item.name == "SetBuildRoot") c.output_dir = absolute(path_value(value), root);
         else if (item.name == "SetSource") c.source = absolute(path_value(value), root);
+        else if (item.name == "AddSource") c.extra_sources.push_back(absolute(path_value(value), root));
+        else if (item.name == "SetVersionFile") c.version_file = absolute(path_value(value), root);
         else if (item.name == "SetNextBuildDrawProgress" || item.name == "SetGeneratePlatformModule") {
             if (!std::holds_alternative<bool>(value))
                 throw std::runtime_error(item.name + " expects a boolean");
@@ -610,6 +628,16 @@ Config load_config(const fs::path& file, const fs::path& root) {
     if (c.output_name.empty()) c.output_name = lower(c.name);
     if (c.output_dir.empty()) c.output_dir = root / ".build" / path(c.output_name);
     if (c.source.empty()) c.source = file.parent_path();
+    if (!c.version_file.empty()) {
+        auto source = read(c.version_file);
+        const auto end = source.find_last_not_of(" \t\r\n");
+        source.resize(end == std::string::npos ? 0 : end + 1);
+        static const std::regex version_pattern(R"((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))");
+        if (!std::regex_match(source, version_pattern))
+            throw std::runtime_error("invalid version in " + utf8(c.version_file));
+        c.version = std::move(source);
+        c.defines.push_back("NEXTBUILD_VERSION=\"" + c.version + "\"");
+    }
     return c;
 }
 Paths discover(const fs::path& root) {
@@ -657,7 +685,8 @@ public:
         const auto c = load_config(project_path(target, root), root);
         if (!fs::exists(c.output_dir)) return;
         const auto dir = fs::canonical(c.output_dir);
-        if (dir == dir.root_path() || within(root, dir) || within(c.file, dir) || within(c.source, dir))
+        if (dir == dir.root_path() || within(root, dir) || within(c.file, dir) || within(c.source, dir) ||
+            std::ranges::any_of(c.extra_sources, [&](const auto& source) { return within(source, dir); }))
             throw std::runtime_error("refusing to clean a directory containing project sources: " + utf8(dir));
         fs::remove_all(dir);
         if (!quiet) std::cout << "cleaned " << utf8(dir) << '\n';
@@ -722,7 +751,7 @@ export int cli(const Args& args) {
                          "       nextbuild lsp [--stdio]\n";
             return 0;
         } else if (options && arg == "--version") {
-            std::cout << "nextbuild 0.1.0\n";
+            std::cout << "nextbuild " << nextbuild_version << '\n';
             return 0;
         } else if (options && arg == "--root") {
             if (++index == args.size()) { std::cerr << "nextbuild: --root requires a directory\n"; return 2; }

@@ -13,6 +13,9 @@ module;
 #include <algorithm>
 #include <span>
 #include <charconv>
+#ifndef PARSLEY_NO_COMPAT
+#define PARSLEY_NO_COMPAT
+#endif
 #include "parser.h"
 #include "nextbuildmanifest_parse.h"
 #include "nextbuildmanifest_sem.h"
@@ -22,7 +25,7 @@ import nextbuild.files;
 
 export namespace nb {
 inline const Args project_directives{
-    "Project", "Version", "SetBuildRoot", "SetSource", "SetStandard", "SetCompiler",
+    "Project", "Version", "SetVersionFile", "SetBuildRoot", "SetSource", "AddSource", "SetStandard", "SetCompiler",
     "SetMinCompilerVer", "SetNextBuildDrawProgress", "EnableCompileFlag", "EnableLinkFlag",
     "AddModulePath", "AddDefine", "SetOutputName", "SetTargetTriple", "SetExecutableLayout",
     "SetProductKind", "SetLibraryKind", "SetGeneratePlatformModule", "EnableFeature", "UseDependency", "LinkLibrary", "Depend"

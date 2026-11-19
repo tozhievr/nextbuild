@@ -11,6 +11,11 @@ module;
 export module nextbuild.files;
 
 export namespace nb {
+#if defined(NEXTBUILD_VERSION)
+inline constexpr std::string_view nextbuild_version = NEXTBUILD_VERSION;
+#else
+inline constexpr std::string_view nextbuild_version = "0.0.0";
+#endif
 namespace fs = std::filesystem;
 using Args = std::vector<std::string>;
 std::string utf8(const fs::path& value) {

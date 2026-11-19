@@ -29,6 +29,8 @@ inline const std::map<std::string, DirectiveInfo> catalog{
     {"Project", {"Human-readable project name", "ident", "Sets the project display name. Also used as the default output basename.", "Project : NextBoot"}},
     {"Version", {"Project version", "version", "Dotted version string stored in build metadata.", "Version : 0.1.0"}},
     {"SetBuildRoot", {"Build output directory", "path", "Directory for pcm/obj/segments and the final `.nxflat` image.", "SetBuildRoot : @PROJECT_ROOT / '.build' / 'demo'"}},
+    {"AddSource", {"Additional source file or directory", "path", "Adds a source input alongside SetSource.", "AddSource : @PROJECT_ROOT / generated"}},
+    {"SetVersionFile", {"Version file", "path", "Reads a semantic version and defines NEXTBUILD_VERSION.", "SetVersionFile : @PROJECT_ROOT / VERSION"}},
     {"SetSource", {"Source tree root", "path", "Root scanned for C++20 modules (`.cppm`, `.ixx`, …) and optional asm.", "SetSource : @PROJECT_ROOT / 'demo'"}},
     {"SetStandard", {"C++ language standard", "ident", "Passed to the compiler as `-std=<value>`. Prefer `c++20` / `c++2d`.", "SetStandard : c++2d\nSetStandard : c++20"}},
     {"SetCompiler", {"Compiler executable", "ident", "Compiler looked up on PATH (typically `clang++`).", "SetCompiler : clang++"}},
@@ -399,7 +401,7 @@ private:
                 {"definitionProvider", true}, {"documentSymbolProvider", true},
                 {"completionProvider", Object{{"triggerCharacters", Array{"@", "/", "'", "\"", ":", "-", " "}},
                                                {"resolveProvider", false}}}}},
-                {"serverInfo", Object{{"name", "nextbuild-ls"}, {"version", "0.1.0"}}}});
+                {"serverInfo", Object{{"name", "nextbuild-ls"}, {"version", std::string(nextbuild_version)}}}});
             return;
         }
         if (method == "shutdown") {

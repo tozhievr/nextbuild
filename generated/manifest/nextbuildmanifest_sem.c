@@ -785,34 +785,36 @@ static inline int match_pat_node_10(const nextbuildmanifest_ctx *cx, int32_t nid
 
 static psl_rval eval_list_1(nextbuildmanifest_ctx *cx, int32_t nid, int level, const pat_bind_node_10 *b) {
   (void)cx; (void)nid; (void)level; (void)b;
-  psl_rval *arr = (psl_rval *)psl_arena_alloc(cx->arena, 25u * sizeof(psl_rval), sizeof(void *));
+  psl_rval *arr = (psl_rval *)psl_arena_alloc(cx->arena, 27u * sizeof(psl_rval), sizeof(void *));
   if (!arr) return rv_empty_list();
   arr[0] = rv_str(psl_str_lit("Project"));
   arr[1] = rv_str(psl_str_lit("Version"));
   arr[2] = rv_str(psl_str_lit("SetBuildRoot"));
   arr[3] = rv_str(psl_str_lit("SetSource"));
-  arr[4] = rv_str(psl_str_lit("SetStandard"));
-  arr[5] = rv_str(psl_str_lit("SetCompiler"));
-  arr[6] = rv_str(psl_str_lit("SetMinCompilerVer"));
-  arr[7] = rv_str(psl_str_lit("SetNextBuildDrawProgress"));
-  arr[8] = rv_str(psl_str_lit("EnableCompileFlag"));
-  arr[9] = rv_str(psl_str_lit("EnableLinkFlag"));
-  arr[10] = rv_str(psl_str_lit("AddModulePath"));
-  arr[11] = rv_str(psl_str_lit("AddDefine"));
-  arr[12] = rv_str(psl_str_lit("SetOutputName"));
-  arr[13] = rv_str(psl_str_lit("SetTargetTriple"));
-  arr[14] = rv_str(psl_str_lit("SetExecutableLayout"));
-  arr[15] = rv_str(psl_str_lit("SetProductKind"));
-  arr[16] = rv_str(psl_str_lit("SetLibraryKind"));
-  arr[17] = rv_str(psl_str_lit("SetGeneratePlatformModule"));
-  arr[18] = rv_str(psl_str_lit("EnableFeature"));
-  arr[19] = rv_str(psl_str_lit("UseDependency"));
-  arr[20] = rv_str(psl_str_lit("LinkLibrary"));
-  arr[21] = rv_str(psl_str_lit("Depend"));
-  arr[22] = rv_str(psl_str_lit("Dependency"));
-  arr[23] = rv_str(psl_str_lit("LibraryKind"));
-  arr[24] = rv_str(psl_str_lit("RequireProject"));
-  return rv_list_make(arr, 25u);
+  arr[4] = rv_str(psl_str_lit("AddSource"));
+  arr[5] = rv_str(psl_str_lit("SetVersionFile"));
+  arr[6] = rv_str(psl_str_lit("SetStandard"));
+  arr[7] = rv_str(psl_str_lit("SetCompiler"));
+  arr[8] = rv_str(psl_str_lit("SetMinCompilerVer"));
+  arr[9] = rv_str(psl_str_lit("SetNextBuildDrawProgress"));
+  arr[10] = rv_str(psl_str_lit("EnableCompileFlag"));
+  arr[11] = rv_str(psl_str_lit("EnableLinkFlag"));
+  arr[12] = rv_str(psl_str_lit("AddModulePath"));
+  arr[13] = rv_str(psl_str_lit("AddDefine"));
+  arr[14] = rv_str(psl_str_lit("SetOutputName"));
+  arr[15] = rv_str(psl_str_lit("SetTargetTriple"));
+  arr[16] = rv_str(psl_str_lit("SetExecutableLayout"));
+  arr[17] = rv_str(psl_str_lit("SetProductKind"));
+  arr[18] = rv_str(psl_str_lit("SetLibraryKind"));
+  arr[19] = rv_str(psl_str_lit("SetGeneratePlatformModule"));
+  arr[20] = rv_str(psl_str_lit("EnableFeature"));
+  arr[21] = rv_str(psl_str_lit("UseDependency"));
+  arr[22] = rv_str(psl_str_lit("LinkLibrary"));
+  arr[23] = rv_str(psl_str_lit("Depend"));
+  arr[24] = rv_str(psl_str_lit("Dependency"));
+  arr[25] = rv_str(psl_str_lit("LibraryKind"));
+  arr[26] = rv_str(psl_str_lit("RequireProject"));
+  return rv_list_make(arr, 27u);
 }
 
 static psl_rval eval_list_2(nextbuildmanifest_ctx *cx, int32_t nid, int level, const pat_bind_node_10 *b) {
@@ -826,16 +828,18 @@ static psl_rval eval_list_2(nextbuildmanifest_ctx *cx, int32_t nid, int level, c
 
 static psl_rval eval_list_3(nextbuildmanifest_ctx *cx, int32_t nid, int level, const pat_bind_node_10 *b) {
   (void)cx; (void)nid; (void)level; (void)b;
-  psl_rval *arr = (psl_rval *)psl_arena_alloc(cx->arena, 7u * sizeof(psl_rval), sizeof(void *));
+  psl_rval *arr = (psl_rval *)psl_arena_alloc(cx->arena, 9u * sizeof(psl_rval), sizeof(void *));
   if (!arr) return rv_empty_list();
   arr[0] = rv_str(psl_str_lit("SetBuildRoot"));
   arr[1] = rv_str(psl_str_lit("SetSource"));
-  arr[2] = rv_str(psl_str_lit("AddModulePath"));
-  arr[3] = rv_str(psl_str_lit("UseDependency"));
-  arr[4] = rv_str(psl_str_lit("LinkLibrary"));
-  arr[5] = rv_str(psl_str_lit("Depend"));
-  arr[6] = rv_str(psl_str_lit("RequireProject"));
-  return rv_list_make(arr, 7u);
+  arr[2] = rv_str(psl_str_lit("AddSource"));
+  arr[3] = rv_str(psl_str_lit("SetVersionFile"));
+  arr[4] = rv_str(psl_str_lit("AddModulePath"));
+  arr[5] = rv_str(psl_str_lit("UseDependency"));
+  arr[6] = rv_str(psl_str_lit("LinkLibrary"));
+  arr[7] = rv_str(psl_str_lit("Depend"));
+  arr[8] = rv_str(psl_str_lit("RequireProject"));
+  return rv_list_make(arr, 9u);
 }
 
 static void run_node_passes(nextbuildmanifest_ctx *cx, int32_t nid, int level);

@@ -1,0 +1,9 @@
+Project : Nextbuild
+SetVersionFile : @PROJECT_ROOT / VERSION
+SetSource : @PROJECT_ROOT / src
+AddSource : @PROJECT_ROOT / generated / manifest
+SetStandard : c++26
+SetMinCompilerVer : 22
+SetOutputName : nextbuild
+EnableCompileFlag : '-Igenerated/manifest'
+AddDefine : PARSLEY_STATIC
