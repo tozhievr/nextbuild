@@ -197,6 +197,8 @@ int cli(const Args& args) {
             return 2;
         } else targets.push_back(path(arg));
     }
+    if (!fs::is_directory(root)) throw std::runtime_error("project root is not a directory: " + utf8(root));
+    fs::current_path(root);
     if (list || targets.empty()) targets = discover(root);
     if (list) {
         if (targets.empty()) std::cout << "no projects under " << utf8(root) << '\n';
