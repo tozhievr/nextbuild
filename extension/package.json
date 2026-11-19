@@ -1,0 +1,79 @@
+{
+  "name": "nextbuild",
+  "displayName": "Nextbuild",
+  "description": "Language support and build tasks for Nextbuild manifests",
+  "version": "0.1.0",
+  "publisher": "nextbuild-tools",
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onLanguage:nextbuild"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "nextbuild",
+        "aliases": [
+          "Nextbuild"
+        ],
+        "extensions": [
+          ".nextbuild",
+          ".nextbuild-dependency"
+        ],
+        "filenames": [
+          ".nextbuild",
+          ".nextbuild-dependency"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "nextbuild",
+        "scopeName": "source.nextbuild",
+        "path": "./syntaxes/nextbuild.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "nextbuild.build",
+        "title": "Nextbuild: Build"
+      },
+      {
+        "command": "nextbuild.clean",
+        "title": "Nextbuild: Clean"
+      },
+      {
+        "command": "nextbuild.restartLanguageServer",
+        "title": "Nextbuild: Restart Language Server"
+      }
+    ],
+    "configuration": {
+      "title": "Nextbuild",
+      "properties": {
+        "nextbuild.executablePath": {
+          "type": "string",
+          "default": "nextbuild",
+          "scope": "machine-overridable",
+          "description": "Path to the Nextbuild executable, or a command available on PATH."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "9.0.1"
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "scopeName": "source.nextbuild",
+  "patterns": [
+    {
+      "name": "comment.line.nextbuild",
+      "match": "#.*$|//.*$"
+    },
+    {
+      "name": "entity.name.function.directive.nextbuild",
+      "match": "^\\s*[A-Za-z_]\\w*(?=\\s*:)"
+    },
+    {
+      "name": "variable.other.nextbuild",
+      "match": "@[A-Za-z_][A-Za-z_0-9]*"
+    },
+    {
+      "name": "constant.language.boolean.nextbuild",
+      "match": "\\b(?:true|false|True|False)\\b"
+    },
+    {
+      "name": "constant.numeric.nextbuild",
+      "match": "\\b(?:0[xX][0-9A-Fa-f]+|[0-9]+(?:\\.[0-9]+)*)\\b"
+    },
+    {
+      "include": "#quoted"
+    }
+  ],
+  "repository": {
+    "quoted": {
+      "patterns": [
+        {
+          "name": "string.quoted.nextbuild",
+          "begin": "'",
+          "end": "'|$",
+          "patterns": [
+            {
+              "name": "constant.character.escape.nextbuild",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.nextbuild",
+          "begin": "\"",
+          "end": "\"|$",
+          "patterns": [
+            {
+              "name": "constant.character.escape.nextbuild",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
