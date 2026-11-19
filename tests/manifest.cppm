@@ -66,10 +66,30 @@ void syntax_and_positions() {
 }
 }
 
+namespace {
+void semantics() {
+    const auto correct = "@Progress : true\nSetNextBuildDrawProgress : @Progress\nSetSource : @PROJECT_ROOT / src\n";
+    require(nb::semantic_diagnostics(correct).empty(), "a valid manifest produced semantic errors");
+    const auto errors = nb::semantic_diagnostics(
+        "Unknown : hello\nSetNextBuildDrawProgress : 'yes'\nSetSource : @Missing\n"
+        "SetExecutableLayout : 'wrong'\n");
+    bool unknown = false, boolean = false, undefined = false, layout = false;
+    for (const auto& item : errors) {
+        unknown |= item.code == "NB_UNKNOWN";
+        boolean |= item.code == "NB_BOOL";
+        undefined |= item.code == "NB_UNDEFINED";
+        layout |= item.code == "NB_LAYOUT";
+    }
+    require(unknown && boolean && undefined && layout, "expected PSL diagnostics were missing");
+}
+}
+
 export int manifest_tests() {
     try {
         manifest_values();
         syntax_and_positions();
+        semantics();
+        return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;
