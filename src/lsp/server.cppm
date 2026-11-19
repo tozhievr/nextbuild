@@ -28,28 +28,28 @@ struct DirectiveInfo {
 inline const std::map<std::string, DirectiveInfo> catalog{
     {"Project", {"Human-readable project name", "ident", "Sets the project display name. Also used as the default output basename.", "Project : NextBoot"}},
     {"Version", {"Project version", "version", "Dotted version string stored in build metadata.", "Version : 0.1.0"}},
-    {"SetBuildRoot", {"Build output directory", "path", "Directory for pcm/obj/segments and the final `.nxflat` image.", "SetBuildRoot : @NEXTOS_MAIN_ROOT / '.build' / 'bootloader'"}},
-    {"SetSource", {"Source tree root", "path", "Root scanned for C++20 modules (`.cppm`, `.ixx`, …) and optional asm.", "SetSource : @NEXTOS_MAIN_ROOT / 'bootloader'"}},
+    {"SetBuildRoot", {"Build output directory", "path", "Directory for pcm/obj/segments and the final `.nxflat` image.", "SetBuildRoot : @PROJECT_ROOT / '.build' / 'demo'"}},
+    {"SetSource", {"Source tree root", "path", "Root scanned for C++20 modules (`.cppm`, `.ixx`, …) and optional asm.", "SetSource : @PROJECT_ROOT / 'demo'"}},
     {"SetStandard", {"C++ language standard", "ident", "Passed to the compiler as `-std=<value>`. Prefer `c++20` / `c++2d`.", "SetStandard : c++2d\nSetStandard : c++20"}},
     {"SetCompiler", {"Compiler executable", "ident", "Compiler looked up on PATH (typically `clang++`).", "SetCompiler : clang++"}},
     {"SetMinCompilerVer", {"Minimum compiler version", "version", "Build fails if `clang++ --version` is older than this dotted version.", "SetMinCompilerVer : 23.1.3"}},
     {"SetNextBuildDrawProgress", {"Draw progress bar", "bool", "When `True`, nextbuild draws a progress bar while compiling modules.", "SetNextBuildDrawProgress : True"}},
     {"EnableCompileFlag", {"Add a compile flag", "flag", "Appends one flag to the module compile command. Repeatable.", "EnableCompileFlag : '-ffreestanding'\nEnableCompileFlag : '-fno-exceptions'"}},
     {"EnableLinkFlag", {"Add a link flag", "flag", "Appends one flag to the intermediate link step. Repeatable.", "EnableLinkFlag : '-Wl,-z,max-page-size=0x1000'"}},
-    {"AddModulePath", {"Extra BMI/module search path", "path", "Adds `-fprebuilt-module-path=` for consuming prebuilt `.pcm` files.", "AddModulePath : @NEXTOS_MAIN_ROOT / '.build' / 'stdlib' / 'pcm'"}},
-    {"AddDefine", {"Preprocessor define", "ident", "Adds `-DNAME` (or `-DNAME=value` if provided as a string).", "AddDefine : NEXTOS_BOOT\nAddDefine : 'NEXTOS_DEBUG=1'"}},
+    {"AddModulePath", {"Extra BMI/module search path", "path", "Adds `-fprebuilt-module-path=` for consuming prebuilt `.pcm` files.", "AddModulePath : @PROJECT_ROOT / '.build' / 'stdlib' / 'pcm'"}},
+    {"AddDefine", {"Preprocessor define", "ident", "Adds `-DNAME` (or `-DNAME=value` if provided as a string).", "AddDefine : APP_BOOT\nAddDefine : 'APP_DEBUG=1'"}},
     {"SetOutputName", {"Output basename", "ident", "Overrides the default basename derived from `Project` (without extension).", "SetOutputName : nextboot"}},
     {"SetTargetTriple", {"Clang target triple", "ident", "Optional. Defaults to `x86_64-unknown-none-elf` for freestanding intermediate objects. Final ship format is still NXFL.", "SetTargetTriple : x86_64-unknown-none-elf"}},
     {"SetExecutableLayout", {"Named segments and load addresses", "layout", "Required for `SetProductKind : nxflat`. Declares labeled segments for the NXFL flat image.", "SetExecutableLayout : {\n    - start = 0x10000\n    - main  = 0x12000\n}"}},
     {"SetProductKind", {"Product type: nxflat | library | host", "ident", "`nxflat` — freestanding labeled flat image (OS). `library` — static library + BMI modules. `host` — Native host executable (e.g. VM).", "SetProductKind : library\nSetProductKind : host\nSetProductKind : nxflat"}},
-    {"SetLibraryKind", {"Library target profile: host | next", "ident", "`host` — native host static library with cmake_generated. `next` — freestanding NextOS stdlib (ELF intermediates).", "SetLibraryKind : host\nSetLibraryKind : next"}},
+    {"SetLibraryKind", {"Library target profile: host | freestanding", "ident", "`host` — native host static library with cmake_generated. `freestanding` — static library for a bare-metal target.", "SetLibraryKind : host\nSetLibraryKind : freestanding"}},
     {"EnableFeature", {"Enable a cmake_generated feature tag", "ident", "Repeatable. Host defaults include AVX2 and FMA. Also: SSE42, AVX512, AVX512BW, VNNI.", "EnableFeature : AVX2\nEnableFeature : FMA"}},
-    {"UseDependency", {"Consume a .nextbuild-dependency export", "path", "Path to a `.nextbuild-dependency` file. Builds `RequireProject` first, then injects module paths, libraries and flags into this project.", "UseDependency : @NEXTOS_MAIN_ROOT / 'stdlib' / 'host' / '.nextbuild-dependency'"}},
-    {"LinkLibrary", {"Link an extra static library", "path", "Repeatable absolute/relative library path passed to the final link step.", "LinkLibrary : @NEXTOS_MAIN_ROOT / '.build' / 'stdlib-host' / 'libcpp26host.lib'"}},
-    {"Depend", {"Build another nextbuild project first", "path", "Path to a project directory or `.nextbuild` file that must be built first.", "Depend : @NEXTOS_MAIN_ROOT / 'stdlib' / 'host'"}},
+    {"UseDependency", {"Consume a .nextbuild-dependency export", "path", "Path to a `.nextbuild-dependency` file. Builds `RequireProject` first, then injects module paths, libraries and flags into this project.", "UseDependency : @PROJECT_ROOT / 'stdlib' / 'host' / '.nextbuild-dependency'"}},
+    {"LinkLibrary", {"Link an extra static library", "path", "Repeatable absolute/relative library path passed to the final link step.", "LinkLibrary : @PROJECT_ROOT / '.build' / 'stdlib-host' / 'libcpp26host.lib'"}},
+    {"Depend", {"Build another nextbuild project first", "path", "Path to a project directory or `.nextbuild` file that must be built first.", "Depend : @PROJECT_ROOT / 'stdlib' / 'host'"}},
     {"Dependency", {"Dependency export name", "ident", "Human-readable name of this dependency package.", "Dependency : LibCpp26Host"}},
     {"LibraryKind", {"host | next", "ident", "Library profile this dependency provides.", "LibraryKind : host"}},
-    {"RequireProject", {"Provider .nextbuild project to build first", "path", "Path to the library project directory or `.nextbuild` file.", "RequireProject : @NEXTOS_MAIN_ROOT / 'stdlib' / 'host'"}},
+    {"RequireProject", {"Provider .nextbuild project to build first", "path", "Path to the library project directory or `.nextbuild` file.", "RequireProject : @PROJECT_ROOT / 'stdlib' / 'host'"}},
 };
 }
 
@@ -120,7 +120,8 @@ fs::path uri_path(std::string uri) {
     return path(decoded);
 }
 const TextMap builtins{
-    {"NEXTOS_MAIN_ROOT", "Absolute path to the NextOS repository root."},
+    {"PROJECT_ROOT", "Absolute path to the project workspace root."},
+    {"NEXTOS_MAIN_ROOT", "Compatibility alias for @PROJECT_ROOT."},
     {"DEP_BUILD_ROOT", "Provider build root (inside a .nextbuild-dependency file)."},
     {"DEP_PCM", "Provider BMI directory."},
     {"DEP_LIBRARY", "Provider static library path."}
@@ -187,7 +188,7 @@ Json snippet(const std::string& label, const std::string& insert, const std::str
     return Object{{"label", label}, {"kind", kind}, {"insertText", insert},
                   {"insertTextFormat", 2}, {"detail", detail}};
 }
-constexpr auto root_snippet = "@NEXTOS_MAIN_ROOT / '\x24{1:path}'";
+constexpr auto root_snippet = "@PROJECT_ROOT / '\x24{1:path}'";
 constexpr auto layout_snippet = "{\n    - \x24{1:start} = \x24{2:0x10000}\n}";
 Array variables(const Analysis& analysis, std::string partial, bool has_at) {
     Array result;
@@ -201,7 +202,7 @@ Array variables(const Analysis& analysis, std::string partial, bool has_at) {
 Array paths(const std::string& typed, const fs::path& root, const Analysis& analysis) {
     if (typed.empty()) {
         auto result = variables(analysis, "", false);
-        result.push_back(snippet("@NEXTOS_MAIN_ROOT / '…'", root_snippet));
+        result.push_back(snippet("@PROJECT_ROOT / '…'", root_snippet));
         return result;
     }
     Array result;
@@ -237,8 +238,8 @@ Array directives(const Analysis& analysis, const std::string& typed) {
     Array result;
     if (typed.empty() && analysis.dependency)
         result.push_back(snippet("dependency skeleton",
-            "Dependency : \x24{1:LibName}\nVersion : \x24{2:0.1.0}\nLibraryKind : \x24{3|host,next|}\n\n"
-            "RequireProject : @NEXTOS_MAIN_ROOT / '\x24{4:stdlib}' / '\x24{5:host}'\n\n"
+            "Dependency : \x24{1:LibName}\nVersion : \x24{2:0.1.0}\nLibraryKind : \x24{3|host,freestanding|}\n\n"
+            "RequireProject : @PROJECT_ROOT / '\x24{4:stdlib}' / '\x24{5:host}'\n\n"
             "AddModulePath : @DEP_PCM\nLinkLibrary : @DEP_LIBRARY\n\nEnableCompileFlag : '-nostdinc++'\n",
             "Scaffold a .nextbuild-dependency export"));
     for (const auto& name : analysis.allowed()) {
@@ -248,9 +249,9 @@ Array directives(const Analysis& analysis, const std::string& typed) {
         if (info.kind == "layout") insert += layout_snippet;
         else if (info.kind == "bool") insert += "\x24{1|True,False|}";
         else if (name == "UseDependency")
-            insert += "@NEXTOS_MAIN_ROOT / '\x24{1:stdlib}' / '\x24{2:host}' / '.nextbuild-dependency'";
+            insert += "@PROJECT_ROOT / '\x24{1:stdlib}' / '\x24{2:host}' / '.nextbuild-dependency'";
         else if (name == "SetProductKind") insert += "\x24{1|nxflat,library,host|}";
-        else if (name == "SetLibraryKind" || name == "LibraryKind") insert += "\x24{1|host,next|}";
+        else if (name == "SetLibraryKind" || name == "LibraryKind") insert += "\x24{1|host,freestanding|}";
         else if (analysis.dependency && name == "AddModulePath") insert += "@DEP_PCM";
         else if (analysis.dependency && name == "LinkLibrary") insert += "@DEP_LIBRARY";
         else if (info.kind == "path") insert += root_snippet;
@@ -271,7 +272,7 @@ Array values(const std::string& directive, const std::string& typed, const Analy
         {"SetStandard", {"c++26", "c++2c", "c++23", "c++2b", "c++20", "c++2d"}},
         {"SetCompiler", {"clang++", "clang"}},
         {"SetProductKind", {"nxflat", "library", "host"}},
-        {"SetLibraryKind", {"host", "next"}}, {"LibraryKind", {"host", "next"}},
+        {"SetLibraryKind", {"host", "freestanding"}}, {"LibraryKind", {"host", "freestanding"}},
         {"EnableFeature", {"SSE42", "AVX2", "FMA", "AVX512", "AVX512BW", "VNNI"}},
         {"EnableCompileFlag", {"'-ffreestanding'", "'-fno-exceptions'", "'-fno-rtti'",
             "'-fno-threadsafe-statics'", "'-nostdinc++'", "'-nobuiltininc'"}}
@@ -291,7 +292,7 @@ Array values(const std::string& directive, const std::string& typed, const Analy
         return {snippet("{ layout }", layout_snippet)};
     if (!typed.empty()) return result;
     result = variables(analysis, "", false);
-    const std::string base = analysis.dependency ? "@DEP_BUILD_ROOT" : "@NEXTOS_MAIN_ROOT";
+    const std::string base = analysis.dependency ? "@DEP_BUILD_ROOT" : "@PROJECT_ROOT";
     result.push_back(snippet(base + " / '…'", base + " / '\x24{1:path}'"));
     for (const auto* boolean : {"True", "False"}) result.push_back(item(boolean, 21, boolean));
     return result;
