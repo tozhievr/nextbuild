@@ -31,7 +31,9 @@ namespace nb {
 fs::path tool(std::string_view name, const fs::path& adjacent) {
     auto executable = path(name);
 #ifdef _WIN32
-    if (!executable.has_extension()) executable += L".exe";
+    if (executable.has_parent_path() && fs::is_regular_file(executable))
+        return fs::absolute(executable);
+    if (lower(utf8(executable.extension())) != ".exe") executable += L".exe";
     if (executable.has_parent_path() && fs::is_regular_file(executable))
         return fs::absolute(executable);
     if (!adjacent.empty() && fs::is_regular_file(adjacent / executable))

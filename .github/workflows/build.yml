@@ -68,7 +68,7 @@ jobs:
           if ((& $binary --version) -ne "nextbuild $version" -or $LASTEXITCODE -ne 0) {
             throw 'The self-built binary does not match VERSION'
           }
-          $clang = (Get-Command clang++ -CommandType Application).Source.Replace('\','/')
+          $clang = (Get-Command clang++ -CommandType Application | Select-Object -First 1).Source.Replace('\','/')
           cmake "-DNEXTBUILD=$binary" "-DTEST_ROOT=$PWD/build/self-lsp" -P tests/lsp.cmake
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake "-DNEXTBUILD=$binary" "-DTEST_ROOT=$PWD/build/self-products" "-DCLANG=$clang" "-DEXE_SUFFIX=$suffix" -P tests/smoke.cmake

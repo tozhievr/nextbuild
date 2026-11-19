@@ -25,7 +25,7 @@ file(WRITE "${TEST_ROOT}/consumer/.nextbuild"
 file(WRITE "${TEST_ROOT}/consumer/src/local header.hpp" "#define EXPECTED 42\n")
 file(WRITE "${TEST_ROOT}/consumer/src/main.cpp" "#include \"local header.hpp\"\nimport value;\nint main() { return answer() == EXPECTED ? 0 : 1; }\n")
 file(WRITE "${TEST_ROOT}/flat/.nextbuild"
-    "Project : Flat\n${compiler}\nSetSource : @PROJECT_ROOT / flat / src\nSetExecutableLayout : {\n - start = 0x10000\n}\n")
+    "Project : Flat\n${compiler}\nSetSource : @PROJECT_ROOT / flat / src\nEnableLinkFlag : '-Wl,--gc-sections'\nSetExecutableLayout : {\n - start = 0x10000\n}\n")
 file(WRITE "${TEST_ROOT}/flat/src/start.cpp"
     "extern \"C\" [[gnu::section(\".start\")]] void start() {}\n")
 run(--root "${TEST_ROOT}" --list)

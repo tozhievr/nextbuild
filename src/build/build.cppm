@@ -529,11 +529,26 @@ fs::path finish_product(Config& c, Args args, const fs::path& bindir,
         std::ranges::stable_sort(c.layout, {}, &Layout::value_type::second);
         const auto script = dir / "sections.ld";
         write(script, sections(c.layout));
-        args.insert(args.end(), {"-nostdlib", "-static", "-fuse-ld=lld", "-Xlinker", "-T",
-                                "-Xlinker", utf8(script), "-Wl,--build-id=none", "-Wl,--no-dynamic-linker"});
+        args = {utf8(required_tool({"ld.lld"}, bindir)), "-static", "-T", utf8(script),
+                "--build-id=none", "--no-dynamic-linker"};
         output = dir / path(c.output_name + ".nxflat");
     }
-    args.insert(args.end(), c.link_flags.begin(), c.link_flags.end());
+    if (c.product == "host") args.insert(args.end(), c.link_flags.begin(), c.link_flags.end());
+    else for (const auto& flag : c.link_flags) {
+        if (flag.starts_with("-Wl,")) {
+            std::string_view forwarded(flag);
+            forwarded.remove_prefix(4);
+            while (!forwarded.empty()) {
+                const auto comma = forwarded.find(',');
+                args.emplace_back(forwarded.substr(0, comma));
+                if (comma == std::string_view::npos) break;
+                forwarded.remove_prefix(comma + 1);
+            }
+        } else if (flag != "-Xlinker" && flag != "-nostdlib" && flag != "-nostartfiles" &&
+                   flag != "-nodefaultlibs" && !flag.starts_with("-fuse-ld=")) {
+            args.push_back(flag);
+        }
+    }
     append_paths(objects);
     append_paths(c.libraries);
     const auto intermediate = c.product == "nxflat" ? dir / "intermediate.elf" : output;
