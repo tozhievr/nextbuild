@@ -25,7 +25,7 @@ node Word _ where
 node NegativeWord _ where
   type = Scalar
 
-node Number _ where
+node NumericWord _ where
   type = Scalar
 
 node Quoted _ where

@@ -13,9 +13,11 @@ execute_process(COMMAND "${PARSLEY}" build "${semantics}" -o "${OUTPUT}" --no-co
 
 foreach(file IN ITEMS parser.c parser.h nextbuildmanifest_ast.h nextbuildmanifest_diag.h
                       nextbuildmanifest_parse.c nextbuildmanifest_parse.h
-                      nextbuildmanifest_sem.c nextbuildmanifest_sem.h)
+                      nextbuildmanifest_sem.c nextbuildmanifest_sem.h include/nextbuildmanifest_parser.h)
     set(generated "${ROOT}/generated/manifest/${file}")
     if(MODE STREQUAL "regenerate")
+        get_filename_component(directory "${generated}" DIRECTORY)
+        file(MAKE_DIRECTORY "${directory}")
         file(COPY_FILE "${OUTPUT}/${file}" "${generated}" ONLY_IF_DIFFERENT)
     elseif(MODE STREQUAL "check")
         execute_process(COMMAND "${CMAKE_COMMAND}" -E compare_files --ignore-eol

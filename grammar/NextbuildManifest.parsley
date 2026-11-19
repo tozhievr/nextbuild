@@ -18,7 +18,7 @@ data Expr
   = Word Text
   | NegativeWord Text
   | Reference Text
-  | Number Text
+  | NumericWord Text
   | Quoted Text
   | BooleanTrue
   | BooleanFalse
@@ -51,7 +51,7 @@ atom
   | NegativeWord <$> ("-" *> ident)
   | NegativeWord <$> ("-" *> number)
   | Reference <$> variable
-  | Number <$> number
+  | NumericWord <$> number
   | Quoted <$> quoted
 
 example "empty" : "" parses-to Manifest []

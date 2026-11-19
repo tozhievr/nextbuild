@@ -145,7 +145,7 @@ Expr convert(const nextbuildmanifest_Expr& expr, unsigned depth = 0) {
     case nextbuildmanifest_EXPR_NEGATIVEWORD:
         return {word, "-" + std::string(expr.as.negativeword.f0), {}, {}};
     case nextbuildmanifest_EXPR_REFERENCE: return {variable, expr.as.reference.f0 + 1, {}, {}};
-    case nextbuildmanifest_EXPR_NUMBER: return {number, expr.as.number.f0, {}, {}};
+    case nextbuildmanifest_EXPR_NUMERICWORD: return {number, expr.as.numericword.f0, {}, {}};
     case nextbuildmanifest_EXPR_QUOTED: return {string, unquote(expr.as.quoted.f0), {}, {}};
     case nextbuildmanifest_EXPR_BOOLEANTRUE: return {boolean, "True", {}, {}};
     case nextbuildmanifest_EXPR_BOOLEANFALSE: return {boolean, "False", {}, {}};
