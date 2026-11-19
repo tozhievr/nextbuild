@@ -13,7 +13,7 @@ builtin "@DEP_BUILD_ROOT" :: ManifestVariable PathValue
 builtin "@DEP_PCM" :: ManifestVariable PathValue
 builtin "@DEP_LIBRARY" :: ManifestVariable PathValue
 
-diag NB_UNKNOWN :: Error "Unknown directive '{name}'"
+diag NB_UNKNOWN :: Error "unknown directive '{name}'"
 diag NB_UNDEFINED :: Error "Undefined variable '{name}'"
 diag NB_BOOL :: Error "'{name}' expects a boolean"
 diag NB_LAYOUT :: Error "'{name}' expects a layout block"

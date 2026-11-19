@@ -137,12 +137,30 @@ Analysis analyze(const std::string& text, const std::string& uri) {
     try {
         for (const auto& statement : parse(text)) {
             if (statement.variable) analysis.variables.insert_or_assign(statement.name, statement);
-            else if (std::ranges::find(analysis.allowed(), statement.name) == analysis.allowed().end())
+            else if (catalog.contains(statement.name) &&
+                     std::ranges::find(analysis.allowed(), statement.name) == analysis.allowed().end())
                 diagnostic(statement.line, statement.column, width(statement.name),
-                           "unknown directive '" + statement.name + "'");
+                           "directive '" + statement.name + "' is unavailable in this manifest kind");
+        }
+        const auto at_offset = [&](std::size_t offset) {
+            const auto prefix = std::string_view(text).substr(0, std::min(offset, text.size()));
+            const auto newline = prefix.rfind('\n');
+            auto line = newline == std::string_view::npos ? prefix : prefix.substr(newline + 1);
+            if (newline == std::string_view::npos && line.starts_with("\xef\xbb\xbf")) line.remove_prefix(3);
+            return position(static_cast<int>(std::ranges::count(prefix, '\n')), width(std::string(line)));
+        };
+        for (const auto& issue : semantic_diagnostics(text)) {
+            const auto end = issue.offset + std::max(issue.length, 1uz);
+            analysis.diagnostics.push_back(Object{
+                {"range", Object{{"start", at_offset(issue.offset)}, {"end", at_offset(end)}}},
+                {"source", "nextbuild"}, {"code", issue.code},
+                {"severity", issue.severity}, {"message", issue.message}
+            });
         }
     } catch (const SyntaxError& error) {
         diagnostic(error.line, error.column, 1, error.what());
+    } catch (const std::runtime_error& error) {
+        diagnostic(1, 1, 1, error.what());
     }
     return analysis;
 }

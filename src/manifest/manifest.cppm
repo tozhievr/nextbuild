@@ -1,5 +1,6 @@
 module;
 #include <cstdint>
+#include <exception>
 #include <map>
 #include <stdexcept>
 #include <variant>
@@ -55,7 +56,16 @@ using Layout = std::vector<std::pair<std::string, Address>>;
 using Value = std::variant<std::string, fs::path, bool, Address, Layout>;
 using Variables = std::map<std::string, Value>;
 
+struct ManifestDiagnostic {
+    std::string code;
+    std::string message;
+    std::size_t offset;
+    std::size_t length;
+    int severity;
+};
+
 Document parse(std::string_view source);
+std::vector<ManifestDiagnostic> semantic_diagnostics(std::string_view source);
 Value evaluate(const Expr& expr, const Variables& vars);
 std::string scalar(const Value& value);
 fs::path path_value(const Value& value);
@@ -216,6 +226,48 @@ Address number(const std::string& value) {
         return result;
     throw std::runtime_error("invalid address " + value);
 }
+}
+
+std::vector<ManifestDiagnostic> semantic_diagnostics(std::string_view source) {
+    constexpr std::size_t max_arena = 64 * 1024 * 1024;
+    constexpr std::size_t bom_size = 3;
+    const auto bom = source.starts_with("\xef\xbb\xbf") ? bom_size : 0;
+    source.remove_prefix(bom);
+    struct Collected {
+        std::vector<ManifestDiagnostic> diagnostics;
+        std::exception_ptr failure;
+        std::size_t bom;
+    };
+    const auto collect = [](void* user, const psl_diag* d) {
+        auto& data = *static_cast<Collected*>(user);
+        try {
+            const auto code = d->def ? d->def->code : psl_str_make("", 0);
+            data.diagnostics.push_back({
+                std::string(code.ptr, code.len),
+                std::string(d->message.ptr, d->message.len),
+                data.bom + d->span.offset, d->span.len,
+                d->severity == PSL_SEV_ERROR ? 1 : d->severity == PSL_SEV_WARNING ? 2 : 3
+            });
+        } catch (...) {
+            data.failure = std::current_exception();
+        }
+    };
+    for (auto capacity = 256 * 1024uz; capacity <= max_arena; capacity *= 2) {
+        std::vector<std::byte> memory(capacity);
+        psl_arena arena{};
+        psl_arena_init(&arena, memory.data(), memory.size());
+        const nextbuildmanifest_node* root = nullptr;
+        psl_diag error{};
+        const auto parsed = nextbuildmanifest_parse(&arena, psl_str_make(source.data(), source.size()), &root, &error);
+        auto* context = parsed == 0 ? nextbuildmanifest_ctx_new(&arena, nullptr) : nullptr;
+        Collected data{{}, {}, bom};
+        const auto status = context ? nextbuildmanifest_analyze(context, root, collect, &data) : -1;
+        if (data.failure) std::rethrow_exception(data.failure);
+        if (arena.error == 1) continue;
+        if (status < 0) throw std::runtime_error("Parsley semantic analysis failed");
+        return data.diagnostics;
+    }
+    throw std::runtime_error("manifest exceeds the Parsley semantic analysis memory limit");
 }
 
 std::string scalar(const Value& value) {
