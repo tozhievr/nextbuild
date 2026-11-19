@@ -1,9 +1,65 @@
-#include "manifest.hpp"
-#include "parser.h"
-
+module;
+#include <cstdint>
+#include <map>
+#include <stdexcept>
+#include <variant>
 #include <algorithm>
 #include <ranges>
 #include <span>
+#include <charconv>
+#include "parser.h"
+#include "nextbuildmanifest_parse.h"
+#include "nextbuildmanifest_sem.h"
+
+export module nextbuild.manifest;
+import nextbuild.files;
+
+export namespace nb {
+inline const Args project_directives{
+    "Project", "Version", "SetBuildRoot", "SetSource", "SetStandard", "SetCompiler",
+    "SetMinCompilerVer", "SetNextBuildDrawProgress", "EnableCompileFlag", "EnableLinkFlag",
+    "AddModulePath", "AddDefine", "SetOutputName", "SetTargetTriple", "SetExecutableLayout",
+    "SetProductKind", "SetLibraryKind", "EnableFeature", "UseDependency", "LinkLibrary", "Depend"
+};
+inline const Args dependency_directives{
+    "Dependency", "Version", "LibraryKind", "RequireProject", "AddModulePath", "LinkLibrary",
+    "EnableCompileFlag", "EnableLinkFlag", "AddDefine", "UseDependency"
+};
+
+struct SyntaxError : std::runtime_error {
+    int line;
+    int column;
+    SyntaxError(std::string message, int line, int column);
+};
+
+enum class Kind { word, string, number, variable, boolean, path, block };
+
+struct Expr {
+    Kind kind;
+    std::string text;
+    std::vector<Expr> parts;
+    Args keys;
+};
+
+struct Statement {
+    std::string name;
+    bool variable;
+    int line;
+    int column;
+    Expr expr;
+};
+
+using Document = std::vector<Statement>;
+using Address = std::uint64_t;
+using Layout = std::vector<std::pair<std::string, Address>>;
+using Value = std::variant<std::string, fs::path, bool, Address, Layout>;
+using Variables = std::map<std::string, Value>;
+
+Document parse(std::string_view source);
+Value evaluate(const Expr& expr, const Variables& vars);
+std::string scalar(const Value& value);
+fs::path path_value(const Value& value);
+}
 
 namespace nb {
 SyntaxError::SyntaxError(std::string message, int line, int column)
@@ -145,5 +201,60 @@ Document parse(std::string_view source) {
         }
     }
     return result;
+}
+}
+
+namespace nb {
+namespace {
+Address number(const std::string& value) {
+    const bool hexadecimal = value.starts_with("0x") || value.starts_with("0X");
+    const auto* last = value.data() + value.size();
+    const auto* first = value.data() + (hexadecimal ? 2 : 0);
+    Address result{};
+    if (const auto [end, error] = std::from_chars(first, last, result, hexadecimal ? 16 : 10);
+        error == std::errc{} && end == last)
+        return result;
+    throw std::runtime_error("invalid address " + value);
+}
+}
+
+std::string scalar(const Value& value) {
+    if (const auto* text = std::get_if<std::string>(&value)) return *text;
+    if (const auto* file = std::get_if<fs::path>(&value)) return utf8(*file);
+    if (const auto* flag = std::get_if<bool>(&value)) return *flag ? "True" : "False";
+    if (const auto* address = std::get_if<Address>(&value)) return std::to_string(*address);
+    throw std::runtime_error("expected scalar value");
+}
+fs::path path_value(const Value& value) {
+    if (const auto* file = std::get_if<fs::path>(&value)) return *file;
+    if (const auto* text = std::get_if<std::string>(&value)) return path(*text);
+    throw std::runtime_error("expected path");
+}
+Value evaluate(const Expr& expr, const Variables& vars) {
+    switch (expr.kind) {
+    case Kind::word:
+    case Kind::string: return expr.text;
+    case Kind::number: return expr.text.contains('.') ? Value(expr.text) : Value(number(expr.text));
+    case Kind::boolean: return lower(expr.text) == "true";
+    case Kind::variable:
+        if (const auto found = vars.find(expr.text); found != vars.end()) return found->second;
+        throw std::runtime_error("undefined variable @" + expr.text);
+    case Kind::path: {
+        fs::path result;
+        for (const auto& part : expr.parts) result /= path(scalar(evaluate(part, vars)));
+        return result;
+    }
+    case Kind::block: {
+        Layout result;
+        for (const auto& [key, part] : std::views::zip(expr.keys, expr.parts)) {
+            const auto address = number(scalar(evaluate(part, vars)));
+            const auto previous = std::ranges::find(result, key, &Layout::value_type::first);
+            if (previous == result.end()) result.emplace_back(key, address);
+            else previous->second = address;
+        }
+        return result;
+    }
+    }
+    throw std::logic_error("unknown expression");
 }
 }

@@ -1,12 +1,16 @@
-#include "cli.hpp"
-#include "server.hpp"
-#include "files.hpp"
 #include <iostream>
+#include <filesystem>
+#include <string>
+#include <vector>
 
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
 #endif
+
+import nextbuild.build;
+import nextbuild.lsp;
+import nextbuild.files;
 
 int entry(const nb::Args& args) {
     try {

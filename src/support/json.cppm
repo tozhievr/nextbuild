@@ -1,4 +1,4 @@
-#pragma once
+module;
 #include <cctype>
 #include <cstdint>
 #include <map>
@@ -8,7 +8,9 @@
 #include <variant>
 #include <vector>
 
-namespace nb {
+export module nextbuild.json;
+
+export namespace nb {
 struct Json {
     using Array = std::vector<Json>;
     using Object = std::map<std::string, Json, std::less<>>;

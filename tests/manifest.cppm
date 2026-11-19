@@ -1,7 +1,10 @@
-#include "manifest.hpp"
-
+module;
 #include <iostream>
 #include <limits>
+
+export module nextbuild.manifest_tests;
+import nextbuild.files;
+import nextbuild.manifest;
 
 namespace {
 void require(bool condition, const char* message) {
@@ -58,7 +61,7 @@ void syntax_and_positions() {
 }
 }
 
-int main() {
+export int manifest_tests() {
     try {
         manifest_values();
         syntax_and_positions();

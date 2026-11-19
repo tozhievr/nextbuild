@@ -1,7 +1,7 @@
-#include "process.hpp"
+module;
 #include <cstdlib>
 #include <system_error>
-
+#include <cerrno>
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
@@ -13,6 +13,14 @@
 #include <unistd.h>
 extern char** environ;
 #endif
+
+export module nextbuild.process;
+import nextbuild.files;
+
+export namespace nb {
+std::string run(const Args& args);
+fs::path tool(std::string_view name, const fs::path& adjacent = {});
+}
 
 namespace nb {
 fs::path tool(std::string_view name, const fs::path& adjacent) {

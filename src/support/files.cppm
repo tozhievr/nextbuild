@@ -1,10 +1,18 @@
-#include "files.hpp"
+module;
+#include <filesystem>
+#include <string>
+#include <string_view>
+#include <vector>
 #include <cctype>
 #include <fstream>
 #include <iterator>
 #include <stdexcept>
 
-namespace nb {
+export module nextbuild.files;
+
+export namespace nb {
+namespace fs = std::filesystem;
+using Args = std::vector<std::string>;
 std::string utf8(const fs::path& value) {
     const auto bytes = value.u8string();
     return {bytes.begin(), bytes.end()};
@@ -29,21 +37,12 @@ void write(const fs::path& file, const std::string& data) {
 }
 fs::path root_from(fs::path start) {
     start = fs::weakly_canonical(fs::absolute(start));
-    auto fallback = start;
-    bool found_project = false;
     for (auto candidate = start;; candidate = candidate.parent_path()) {
-        if (fs::is_regular_file(candidate / "tools/build.py") ||
-            fs::is_regular_file(candidate / "tools/nextbuild") ||
-            fs::is_regular_file(candidate / "tools/nextbuild.exe") ||
-            fs::is_regular_file(candidate / "tools/nextbuild/CMakeLists.txt"))
-            return candidate;
-        if (!found_project && fs::is_regular_file(candidate / ".nextbuild")) {
-            fallback = candidate;
-            found_project = true;
-        }
-        if (candidate == candidate.root_path()) return fallback;
+        if (fs::is_regular_file(candidate / ".nextbuild")) return candidate;
+        if (candidate == candidate.root_path()) return start;
     }
 }
+
 std::string lower(std::string text) {
     for (auto& ch : text) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     return text;
