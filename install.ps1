@@ -36,7 +36,18 @@ try {
     $expected = @(Get-Content -LiteralPath $sums | ForEach-Object {
         if ($_ -cmatch $pattern) { $Matches[1] }
     })
-    if ($expected.Count -ne 1 -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $expected[0]) {
+    $stream = [IO.File]::OpenRead($archive)
+    try {
+        $sha256 = [Security.Cryptography.SHA256]::Create()
+        try {
+            $actual = [BitConverter]::ToString($sha256.ComputeHash($stream)).Replace('-', '')
+        } finally {
+            $sha256.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+    if ($expected.Count -ne 1 -or $actual -ne $expected[0]) {
         throw "SHA-256 mismatch for $asset."
     }
     & tar.exe -xzf $archive -C $work nextbuild.exe Parsley-LICENSE
