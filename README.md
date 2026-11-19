@@ -77,7 +77,9 @@ cmake --install build --prefix build/install
 `SetTargetTriple` переопределяет целевой triple. Для NXFL размещение секций
 задаётся адресами, например `- start = 0x10000`. NXFL использует промежуточный
 x86-64 ELF. Базы `compile_commands.json` записываются в каталог сборки и
-в корень рабочей области.
+в корень рабочей области. Если библиотека должна экспортировать модуль
+`cmake_generated`, включите `SetGeneratePlatformModule : True`.
+Директива `EnableFeature` также включает этот модуль.
 
 ### Зависимости
 

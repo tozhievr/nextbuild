@@ -43,6 +43,7 @@ inline const std::map<std::string, DirectiveInfo> catalog{
     {"SetExecutableLayout", {"Named segments and load addresses", "layout", "Required for `SetProductKind : nxflat`. Declares labeled segments for the NXFL flat image.", "SetExecutableLayout : {\n    - start = 0x10000\n    - main  = 0x12000\n}"}},
     {"SetProductKind", {"Product type: nxflat | library | host", "ident", "`nxflat` — freestanding labeled flat image (OS). `library` — static library + BMI modules. `host` — Native host executable (e.g. VM).", "SetProductKind : library\nSetProductKind : host\nSetProductKind : nxflat"}},
     {"SetLibraryKind", {"Library target profile: host | freestanding", "ident", "`host` — native host static library with cmake_generated. `freestanding` — static library for a bare-metal target.", "SetLibraryKind : host\nSetLibraryKind : freestanding"}},
+    {"SetGeneratePlatformModule", {"Generate the cmake_generated compatibility module", "bool", "Exports platform and feature tags from a static library.", "SetGeneratePlatformModule : True"}},
     {"EnableFeature", {"Enable a cmake_generated feature tag", "ident", "Repeatable. Host defaults include AVX2 and FMA. Also: SSE42, AVX512, AVX512BW, VNNI.", "EnableFeature : AVX2\nEnableFeature : FMA"}},
     {"UseDependency", {"Consume a .nextbuild-dependency export", "path", "Path to a `.nextbuild-dependency` file. Builds `RequireProject` first, then injects module paths, libraries and flags into this project.", "UseDependency : @PROJECT_ROOT / 'stdlib' / 'host' / '.nextbuild-dependency'"}},
     {"LinkLibrary", {"Link an extra static library", "path", "Repeatable absolute/relative library path passed to the final link step.", "LinkLibrary : @PROJECT_ROOT / '.build' / 'stdlib-host' / 'libcpp26host.lib'"}},
@@ -275,6 +276,7 @@ Array directives(const Analysis& analysis, const std::string& typed) {
 Array values(const std::string& directive, const std::string& typed, const Analysis& analysis) {
     static const std::map<std::string, Args> choices{
         {"SetNextBuildDrawProgress", {"True", "False"}},
+        {"SetGeneratePlatformModule", {"True", "False"}},
         {"SetStandard", {"c++26", "c++2c", "c++23", "c++2b", "c++20", "c++2d"}},
         {"SetCompiler", {"clang++", "clang"}},
         {"SetProductKind", {"nxflat", "library", "host"}},
@@ -288,7 +290,7 @@ Array values(const std::string& directive, const std::string& typed, const Analy
         const bool flag = directive == "EnableCompileFlag";
         const auto begin = typed.find_first_not_of("'\"");
         const auto needle = begin == std::string::npos ? "" : lower(typed.substr(begin));
-        const bool boolean = directive == "SetNextBuildDrawProgress";
+        const bool boolean = directive == "SetNextBuildDrawProgress" || directive == "SetGeneratePlatformModule";
         for (const auto& value : found->second)
             if (boolean || (flag ? lower(value).contains(needle) : lower(value).starts_with(needle)))
                 result.push_back(item(value, boolean ? 21 : 12, value));
