@@ -6,7 +6,7 @@ function(request body)
     set(requests "${requests}Content-Length: ${length}\r\n\r\n${body}" PARENT_SCOPE)
 endfunction()
 request([=[{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}]=])
-request([=[{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///fixture/.nextbuild","text":"@FOLDER : 'src'\nSetSource : @FOLDER\nBogus : true\n"}}}]=])
+request([=[{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///fixture/.nextbuild","text":"@FOLDER : 'src'\nSetSource : @FOLDER\nBogus : true\nSetNextBuildDrawProgress : 'yes'\nSetSource : @Missing\n"}}}]=])
 request([=[{"jsonrpc":"2.0","id":"definition","method":"textDocument/definition","params":{"textDocument":{"uri":"file:///fixture/.nextbuild"},"position":{"line":1,"character":15}}}]=])
 request([=[{"jsonrpc":"2.0","id":"hover","method":"textDocument/hover","params":{"textDocument":{"uri":"file:///fixture/.nextbuild"},"position":{"line":1,"character":3}}}]=])
 request([=[{"jsonrpc":"2.0","id":"completion","method":"textDocument/completion","params":{"textDocument":{"uri":"file:///fixture/.nextbuild"},"position":{"line":1,"character":18}}}]=])
@@ -20,7 +20,7 @@ if(NOT status STREQUAL "0")
     message(FATAL_ERROR "LSP failed (${status})\n${errors}\n${output}")
 endif()
 foreach(expected IN ITEMS
-    "documentSymbolProvider" "unknown directive 'Bogus'" "\"id\":\"definition\""
+    "documentSymbolProvider" "unknown directive 'Bogus'" "NB_UNKNOWN" "NB_BOOL" "NB_UNDEFINED" "\"id\":\"definition\""
     "\"id\":\"hover\"" "Source tree root" "\"id\":\"completion\"" "\"label\":\"@FOLDER\""
     "\"id\":\"symbols\"" "\"name\":\"@FOLDER\"" "\"id\":2,\"jsonrpc\":\"2.0\",\"result\":null")
     string(FIND "${output}" "${expected}" index)
