@@ -1430,7 +1430,7 @@ alt_next_28:; if (0) goto alt_next_28;
     if (!p_match_token(p, "number", &act_c_32)) goto alt_next_31;
     (void)act_c_32;
     ParsleyValue* carr_33[1] = {act_c_32};
-    res = p_track(p, pv_ctor("Number", carr_33, 1));
+    res = p_track(p, pv_ctor("NumericWord", carr_33, 1));
     goto alt_ok_2;
   }
 alt_next_31:; if (0) goto alt_next_31;
@@ -1928,10 +1928,10 @@ static Expr* pv_to_Expr(const ParsleyValue* v) {
       node->as.reference.f0 = (v->items[0] && v->items[0]->string_val) ? p_strdup(v->items[0]->string_val) : p_strdup("");
     }
   }
-  else if (strcmp(v->ctor_name, "Number") == 0) {
-    node->tag = EXPR_NUMBER;
+  else if (strcmp(v->ctor_name, "NumericWord") == 0) {
+    node->tag = EXPR_NUMERICWORD;
     if (0 < v->item_count) {
-      node->as.number.f0 = (v->items[0] && v->items[0]->string_val) ? p_strdup(v->items[0]->string_val) : p_strdup("");
+      node->as.numericword.f0 = (v->items[0] && v->items[0]->string_val) ? p_strdup(v->items[0]->string_val) : p_strdup("");
     }
   }
   else if (strcmp(v->ctor_name, "Quoted") == 0) {
@@ -1990,8 +1990,8 @@ static void free_Expr(Expr* node) {
     case EXPR_REFERENCE:
       free(node->as.reference.f0);
       break;
-    case EXPR_NUMBER:
-      free(node->as.number.f0);
+    case EXPR_NUMERICWORD:
+      free(node->as.numericword.f0);
       break;
     case EXPR_QUOTED:
       free(node->as.quoted.f0);
@@ -2239,7 +2239,7 @@ int parsley_run_examples(void) {
   }
   /* example "project" */
   {
-    ParsleyResult r = parsley_parse("Project : NextOS");
+    ParsleyResult r = parsley_parse("Project : Demo");
     if (!r.ok) {
       fprintf(stderr, "[FAIL] example %s: unexpected error at %d:%d: %s\n", "project", r.error.line, r.error.col, r.error.message ? r.error.message : "");
       failures++;
@@ -2247,8 +2247,8 @@ int parsley_run_examples(void) {
       int needed = parsley_format_ast(&r, NULL, 0);
       char* buf = needed >= 0 ? (char*)p_malloc((size_t)needed + 1u) : NULL;
       if (buf) parsley_format_ast(&r, buf, (size_t)needed + 1u);
-      if (!buf || strcmp(buf, "Manifest [Directive \"Project\" (Path (Word \"NextOS\") [])]") != 0) {
-        fprintf(stderr, "[FAIL] example %s: expected `%s`, got `%s`\n", "project", "Manifest [Directive \"Project\" (Path (Word \"NextOS\") [])]", buf ? buf : "<formatting failed>");
+      if (!buf || strcmp(buf, "Manifest [Directive \"Project\" (Path (Word \"Demo\") [])]") != 0) {
+        fprintf(stderr, "[FAIL] example %s: expected `%s`, got `%s`\n", "project", "Manifest [Directive \"Project\" (Path (Word \"Demo\") [])]", buf ? buf : "<formatting failed>");
         failures++;
       }
       free(buf);

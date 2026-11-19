@@ -21,10 +21,10 @@
 #undef EXPR_NEGATIVEWORD
 #endif
 #define EXPR_NEGATIVEWORD nextbuildmanifest_EXPR_NEGATIVEWORD
-#ifdef EXPR_NUMBER
-#undef EXPR_NUMBER
+#ifdef EXPR_NUMERICWORD
+#undef EXPR_NUMERICWORD
 #endif
-#define EXPR_NUMBER nextbuildmanifest_EXPR_NUMBER
+#define EXPR_NUMERICWORD nextbuildmanifest_EXPR_NUMERICWORD
 #ifdef EXPR_PATH
 #undef EXPR_PATH
 #endif
@@ -317,7 +317,7 @@ typedef enum ExprTag {
   EXPR_WORD = 0,
   EXPR_NEGATIVEWORD,
   EXPR_REFERENCE,
-  EXPR_NUMBER,
+  EXPR_NUMERICWORD,
   EXPR_QUOTED,
   EXPR_BOOLEANTRUE,
   EXPR_BOOLEANFALSE,
@@ -339,7 +339,7 @@ struct Expr {
     } reference;
     struct {
       char* f0;
-    } number;
+    } numericword;
     struct {
       char* f0;
     } quoted;
@@ -386,7 +386,7 @@ PARSLEY_API int parsley_run_examples(void);
 #undef EXPR_BOOLEANFALSE
 #undef EXPR_BOOLEANTRUE
 #undef EXPR_NEGATIVEWORD
-#undef EXPR_NUMBER
+#undef EXPR_NUMERICWORD
 #undef EXPR_PATH
 #undef EXPR_QUOTED
 #undef EXPR_REFERENCE
