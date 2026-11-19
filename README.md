@@ -1,165 +1,150 @@
-# nextbuild
+# Nextbuild
 
-`nextbuild` собирает обычные C++-проекты, проекты с именованными модулями и
-freestanding-образы. Рецепты хранятся в `.nextbuild`; экспорт зависимостей
-описывается в `.nextbuild-dependency`. Тот же исполняемый файл запускает
-языковой сервер для обоих форматов.
+[![Build and test](https://github.com/tozhievr/nextbuild/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/tozhievr/nextbuild/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/tozhievr/nextbuild)](https://github.com/tozhievr/nextbuild/releases/latest)
+[![License](https://img.shields.io/github/license/tozhievr/nextbuild)](LICENSE)
 
-## Быстрый старт
+**English** · [Русский](README.ru.md)
 
-Сохраните в корне проекта файл `.nextbuild`:
+Nextbuild builds C and C++ projects from `.nextbuild` manifests. It orders
+named C++ modules, tracks header and BMI dependencies, and produces executables,
+static libraries and freestanding NXFL images. The same binary runs the
+language server for VS Code and Cursor.
+
+[Install](#install) · [Quick start](#quick-start) · [Editor support](#editor-support) ·
+[Manifest reference](docs/manifest.md) · [Contributing](CONTRIBUTING.md)
+
+## Install
+
+Published binaries cover **Windows x64**, **Linux x86-64**, and **macOS
+Apple Silicon**. The installers select the latest stable release and verify
+the archive against its published SHA-256 checksum. They install for the
+current user with no administrator privileges.
+
+**Windows PowerShell**
+
+```powershell
+& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/tozhievr/nextbuild/main/install.ps1')))
+```
+
+**Windows Command Prompt**
+
+```bat
+curl.exe -fsSL "https://raw.githubusercontent.com/tozhievr/nextbuild/main/instal.bat" -o "%TEMP%\nextbuild-install.bat" && call "%TEMP%\nextbuild-install.bat"
+```
+
+**Linux and macOS**
+
+```sh
+( tmp=$(mktemp) && trap 'rm -f "$tmp"' EXIT && curl -fsSL 'https://raw.githubusercontent.com/tozhievr/nextbuild/main/install.sh' -o "$tmp" && sh "$tmp" )
+```
+
+Windows installs into `%LOCALAPPDATA%\Nextbuild\bin` and adds that directory
+to the user PATH. Open a new Command Prompt or terminal if it was already
+running. On Linux and macOS the default is `$HOME/.local/bin`. If needed, add
+`export PATH="$HOME/.local/bin:$PATH"` to your shell startup file.
+
+Check the installation with `nextbuild --version`. Run the same command to
+upgrade. To install a particular release or inspect the script first, save
+the installer and run one of these commands:
+
+```powershell
+.\install.ps1 -Version 0.2.1 -BinDir "$HOME\bin" -NoPath
+```
+
+```bat
+instal.bat -Version 0.2.1 -BinDir "%USERPROFILE%\bin" -NoPath
+```
+
+```sh
+sh install.sh --version 0.2.1 --bin-dir "$HOME/bin"
+```
+
+You can also [download an archive](https://github.com/tozhievr/nextbuild/releases/latest),
+check it against `SHA256SUMS`, and extract the executable and license notice.
+To uninstall, remove `nextbuild` (or `nextbuild.exe`) and
+`nextbuild-Parsley-LICENSE` from the install directory. Remove its PATH entry
+if you added that directory exclusively for Nextbuild.
+
+## Quick start
+
+Create `.nextbuild` in the project root:
 
 ```text
 Project : Hello
 SetSource : @PROJECT_ROOT / src
-SetStandard : c++26
+SetStandard : c++23
 ```
 
-Добавьте `src/main.cpp`:
+Create `src/main.cpp`:
 
 ```cpp
 #include <iostream>
 
 int main() {
-    std::cout << "Hello from nextbuild\n";
+    std::cout << "Hello from Nextbuild\n";
 }
 ```
 
-В корне проекта выполните `nextbuild`. Программа появится в
-`.build/hello/hello` (`hello.exe` на Windows). Нативное приложение — тип
-сборки по умолчанию. `SetStandard` управляет компилятором целевого проекта;
-без этой директивы используется C++20.
+Run `nextbuild` from the project root. The result is
+`.build/hello/hello` or `.build/hello/hello.exe` on Windows.
+The runtime package contains the build tool and language server.
+Install Clang to compile projects. Static libraries also require `llvm-ar`
+or `ar`, and NXFL requires `ld.lld` and `llvm-objcopy`.
 
-## Установка из исходников
+| Command | What it does |
+| --- | --- |
+| `nextbuild --list` | Lists manifests under the workspace root |
+| `nextbuild apps/hello` | Builds a directory or a specific `.nextbuild` file |
+| `nextbuild -B apps/hello` | Forces recompilation |
+| `nextbuild --clean apps/hello` | Removes the project's build outputs |
+| `nextbuild --root DIR --list` | Uses an explicit workspace root |
+| `nextbuild -q` | Hides routine build output |
 
-Нужны CMake 3.30+, Ninja и LLVM Clang 22+ с `clang-scan-deps`. На Windows
-используйте Developer PowerShell for VS с Windows SDK. На macOS
-используйте upstream LLVM и Xcode Command Line Tools. На Linux добавьте
-каталог соответствующей версии LLVM в `PATH`.
+See the [manifest reference](docs/manifest.md) for product types, dependency
+exports, compile flags and NXFL layouts.
+
+## Editor support
+
+Download the VSIX from the [latest release](https://github.com/tozhievr/nextbuild/releases/latest).
+Run **Extensions: Install from VSIX…** in VS Code or Cursor and open a
+Nextbuild manifest in a trusted workspace. The extension provides
+highlighting, completion, diagnostics, hover, definitions and document
+symbols. The command palette also exposes **Nextbuild: Build** and
+**Nextbuild: Clean**.
+
+The extension starts `nextbuild lsp --stdio`. If the editor cannot find the
+executable, restart the editor after updating PATH or set
+`nextbuild.executablePath` to the full path to the binary.
+[Extension documentation](extension/README.md)
+
+## Build from source
+
+Use CMake 3.30+, Ninja and LLVM Clang 22+ with `clang-scan-deps`. On Windows
+use Developer PowerShell for Visual Studio with the Windows SDK. On macOS
+use upstream LLVM and the Xcode Command Line Tools.
 
 ```sh
+git clone https://github.com/tozhievr/nextbuild.git
+cd nextbuild
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
 cmake --build build
 ctest --test-dir build --output-on-failure
 cmake --install build --prefix build/install
 ```
 
-Добавьте `build/install/bin` в `PATH`. Для сборки приложений и библиотек
-нужен Clang, для архивов — `llvm-ar` или `ar`, для NXFL — LLD и
-`llvm-objcopy`. Установленный `nextbuild` использует встроенный парсер.
-
-## Команды
-
-| Команда | Действие |
-| --- | --- |
-| `nextbuild` | Собрать проекты, найденные в рабочей области |
-| `nextbuild apps/hello` | Собрать проект в каталоге или по пути к манифесту |
-| `nextbuild --root DIR --list` | Показать найденные манифесты от указанного корня |
-| `nextbuild -B apps/hello` | Принудительно пересобрать цель |
-| `nextbuild --clean apps/hello` | Удалить каталог артефактов цели |
-| `nextbuild lsp --stdio` | Запустить языковой сервер |
-
-`--root` задаёт `@PROJECT_ROOT` и базу относительных путей. Без него
-сборщик использует ближайший родительский каталог с `.nextbuild` либо
-текущий каталог. `@NEXTOS_MAIN_ROOT` принимается как совместимый псевдоним
-для существующих рецептов. Компиляция учитывает изменения исходников,
-заголовков, модулей и аргументов компилятора.
-
-### Типы продуктов
-
-| Рецепт | Артефакт |
-| --- | --- |
-| `SetProductKind : host` | Нативное приложение |
-| `SetProductKind : library` | Статический архив и BMI |
-| `SetLibraryKind : freestanding` | Статический архив и BMI для bare-metal цели |
-| `SetExecutableLayout : { ... }` | Образ NXFL и JSON-карта секций |
-
-`SetTargetTriple` переопределяет целевой triple. Для NXFL размещение секций
-задаётся адресами, например `- start = 0x10000`. NXFL использует промежуточный
-x86-64 ELF. Базы `compile_commands.json` записываются в каталог сборки и
-в корень рабочей области. Если библиотека должна экспортировать модуль
-`cmake_generated`, включите `SetGeneratePlatformModule : True`.
-Директива `EnableFeature` также включает этот модуль.
-
-### Зависимости
-
-Директива `Depend` задаёт порядок сборки. `UseDependency` загружает описание
-экспорта, собирает поставщика и подключает его модули, архивы и флаги.
-Пример файла `libs/core/.nextbuild-dependency`:
-
-```text
-Dependency : Core
-RequireProject : @PROJECT_ROOT / libs / core
-AddModulePath : @DEP_PCM
-LinkLibrary : @DEP_LIBRARY
-```
-
-## Языковой сервер
-
-Настройте в редакторе команду `nextbuild lsp --stdio` для файлов
-`.nextbuild` и `.nextbuild-dependency`. Сервер предоставляет подсказки
-директив и путей, справку, переход к определениям переменных и диагностику.
-Семантика описана в PSL и проверяет имена директив, ссылки на переменные и
-типы значений для путей, логических настроек и блоков размещения.
-
-## Самосборка Nextbuild
-
-Корневой `.nextbuild` компилирует модули C++26 и сгенерированные исходники
-Parsley C23. Нужен Clang 22+ и установленный Nextbuild. Если бинарника ещё
-нет, соберите его через CMake по инструкции выше.
+Use an installed binary or the CMake bootstrap to build Nextbuild with
+its own manifest:
 
 ```sh
 nextbuild --root . .nextbuild
 ```
 
-Результат находится в `.build/nextbuild/nextbuild` или
-`.build/nextbuild/nextbuild.exe`. `AddSource` подключает дополнительные
-исходники, а `SetVersionFile` читает `VERSION` и передаёт его компилятору.
-В CI CMake собирает начальный бинарник, затем этот бинарник собирает и
-проверяет релизную версию на Windows, Linux и macOS.
+The self-built result is in `.build/nextbuild/`. Changes to the grammar and
+PSL use the [Parsley workflow](CONTRIBUTING.md#manifest-parser-and-semantics).
+Releases are driven by [VERSION](VERSION) and built on all three platforms.
 
-## Расширение для VS Code и Cursor
+## License
 
-Установите архив `nextbuild-<версия>.vsix` из GitHub Release через команду
-**Extensions: Install from VSIX**. Бинарник Nextbuild должен быть в
-`PATH`; альтернативно укажите его путь в `nextbuild.executablePath`.
-Расширение запускает сервер для манифестов и добавляет команды сборки,
-очистки и перезапуска LSP. [Подробнее о расширении](extension/README.md)
-
-## Версии и релизы
-
-`VERSION` в корне задаёт версию CLI, LSP и расширения. Обновите все три
-файла метаданных одной командой и закоммитьте результат:
-
-```sh
-node tools/version.mjs bump minor
-node tools/version.mjs verify
-```
-
-Поддерживаются `patch`, `minor` и `major`. После изменения `VERSION` в
-`main` GitHub Actions проверяет сборки, затем публикует тег `v<версия>`,
-три архива с бинарниками, VSIX и `SHA256SUMS`. В Actions можно вручную
-запустить **Release Nextbuild** и выбрать повышение версии. В этом режиме
-workflow сам коммитит обновление в `main`, если правила ветки разрешают
-это. Для повторной публикации уже подготовленной версии выберите `none`.
-
-## Разработка
-
-Точка входа находится в `src/app/main.cpp`. Остальной C++ расположен в
-`.cppm` по подсистемам в `src/build`, `src/manifest`, `src/lsp`,
-`src/platform` и `src/support`. В `generated/manifest` хранятся
-сгенерированные файлы ISO C23 и лицензия Parsley.
-
-При изменении грамматики или `NextbuildManifest.psem` используйте
-Parsley 2.35.1:
-
-```sh
-cmake -S . -B build -DPARSLEY_EXECUTABLE=/path/to/parsley
-cmake --build build --target manifest-regenerate
-cmake --build build --target manifest-check
-ctest --test-dir build --output-on-failure
-```
-
-Сохраняйте изменения в `grammar/` вместе с обновлёнными
-`generated/manifest/`. `manifest-check` проверяет примеры и сравнивает
-свежий вывод генератора с сохранёнными файлами.
+[MIT](LICENSE). The generated Parsley parser is distributed with its
+[license notice](generated/manifest/LICENSE).

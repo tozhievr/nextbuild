@@ -1,0 +1,39 @@
+name: Test installers
+on:
+  push:
+    branches: [main]
+    paths: ['install.sh', 'install.ps1', 'instal.bat', '.github/workflows/installers.yml']
+  pull_request:
+    paths: ['install.sh', 'install.ps1', 'instal.bat', '.github/workflows/installers.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install and upgrade on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          bin="$RUNNER_TEMP/nextbuild test"
+          sh -n install.sh
+          sh install.sh --version 0.2.1 --bin-dir "$bin"
+          sh install.sh --version v0.2.1 --bin-dir "$bin"
+          test "$("$bin/nextbuild" --version)" = 'nextbuild 0.2.1'
+      - name: Install and upgrade on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bin = "$env:RUNNER_TEMP/nextbuild test"
+          ./install.ps1 -Version 0.2.1 -BinDir $bin -NoPath
+          & ./instal.bat -Version v0.2.1 -BinDir $bin -NoPath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((& "$bin/nextbuild.exe" --version) -ne 'nextbuild 0.2.1') { throw 'Incorrect installed version' }
