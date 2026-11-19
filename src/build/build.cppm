@@ -76,11 +76,8 @@ Unit scan(const fs::path& file) {
     auto text = read(file);
     if (text.starts_with("\xef\xbb\xbf")) text.erase(0, 3);
     static const auto multiline = std::regex_constants::ECMAScript | std::regex_constants::multiline;
-    static const std::regex includes(R"(^[ \t]*(#[ \t]*include\b|(?:export\s+)?import\s+[<"]))", multiline);
     static const std::regex declaration(R"(^[ \t]*(export\s+)?module\s+([\w.]+)(?:\s*:\s*([\w.]+))?\s*;)", multiline);
     static const std::regex imports(R"(^[ \t]*(?:export\s+)?import\s+([\w.:]+)\s*;)", multiline);
-    if (std::regex_search(text, includes))
-        throw std::runtime_error(utf8(file) + ": header imports/#include are not allowed");
     std::smatch match;
     if (std::regex_search(text, match, declaration)) {
         unit.module = match[2].str();
@@ -190,12 +187,11 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
     if (c.product.empty()) {
         if (!c.layout.empty()) c.product = "nxflat";
         else if (!c.library.empty()) c.product = "library";
-        else throw std::runtime_error(utf8(c.file) + ": set SetProductKind or SetExecutableLayout / SetLibraryKind");
+        else c.product = "host";
     }
     if (c.product == "nxflat" && c.layout.empty())
         throw std::runtime_error("SetExecutableLayout is required for nxflat products");
-    if (c.product == "library" && c.library.empty())
-        throw std::runtime_error("SetLibraryKind is required for libraries");
+    if (c.product == "library" && c.library.empty()) c.library = "host";
     if (!quiet) std::cout << "==> building " << c.name << ' ' << c.version << " [" << c.product << "]\n"
                           << "    source : " << utf8(c.source) << "\n    output : " << utf8(c.output_dir) << '\n';
     const auto compiler = required_tool({c.compiler});
@@ -512,7 +508,7 @@ void require_directive(const Statement& item, const Args& allowed, const fs::pat
 Config load_config(const fs::path& file, const fs::path& root) {
     Config c;
     c.file = file;
-    Variables vars{{"NEXTOS_MAIN_ROOT", root}};
+    Variables vars{{"PROJECT_ROOT", root}, {"NEXTOS_MAIN_ROOT", root}};
     const std::map<std::string, std::string Config::*> strings{
         {"Project", &Config::name}, {"Version", &Config::version}, {"SetStandard", &Config::standard},
         {"SetCompiler", &Config::compiler}, {"SetMinCompilerVer", &Config::minimum},
@@ -553,8 +549,9 @@ Config load_config(const fs::path& file, const fs::path& root) {
     }
     c.product = lower(c.product);
     c.library = lower(c.library);
+    if (c.library == "freestanding") c.library = "next";
     if (!c.library.empty() && c.library != "host" && c.library != "next")
-        throw std::runtime_error("SetLibraryKind must be host|next");
+        throw std::runtime_error("SetLibraryKind must be host|freestanding");
     if (!c.product.empty() && c.product != "host" && c.product != "library" && c.product != "nxflat")
         throw std::runtime_error("SetProductKind must be nxflat|library|host");
     if (c.output_name.empty()) c.output_name = lower(c.name);
@@ -565,7 +562,8 @@ Config load_config(const fs::path& file, const fs::path& root) {
 Paths discover(const fs::path& root) {
     Paths result;
     for (auto it = fs::recursive_directory_iterator(root); it != fs::recursive_directory_iterator{}; ++it) {
-        if (it->is_directory() && it->path().filename() == "docs") it.disable_recursion_pending();
+        if (it->is_directory() && (it->path().filename() == ".git" || it->path().filename() == ".build"))
+            it.disable_recursion_pending();
         if (it->path().filename() == ".nextbuild" && it->is_regular_file() && it->file_size())
             result.push_back(it->path());
     }
@@ -619,7 +617,7 @@ private:
 
     void use(Config& c, const fs::path& file, std::set<fs::path>& used) {
         if (!used.insert(file).second) return;
-        Variables vars{{"NEXTOS_MAIN_ROOT", root}};
+        Variables vars{{"PROJECT_ROOT", root}, {"NEXTOS_MAIN_ROOT", root}};
         fs::path provider;
         Paths nested;
         Document exports;
