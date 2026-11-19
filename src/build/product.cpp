@@ -1,3 +1,4 @@
+#include "process.hpp"
 #include "config.hpp"
 #include "json.hpp"
 #include <algorithm>

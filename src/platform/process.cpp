@@ -1,4 +1,4 @@
-#include "nextbuild.hpp"
+#include "process.hpp"
 #include <cstdlib>
 #include <system_error>
 
@@ -56,8 +56,8 @@ struct Handle {
     ~Handle() { if (value && value != INVALID_HANDLE_VALUE) CloseHandle(value); }
     Handle() = default;
     explicit Handle(HANDLE value) : value(value) {}
-    Handle(const Handle&) = delete;
-    Handle& operator=(const Handle&) = delete;
+    Handle(const Handle&) = delete("the native handle has one owner");
+    Handle& operator=(const Handle&) = delete("the native handle has one owner");
     void close() { if (value) CloseHandle(value); value = nullptr; }
 };
 [[noreturn]] void process_error() {

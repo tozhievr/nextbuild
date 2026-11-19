@@ -1,0 +1,58 @@
+module NextbuildManifest (manifest) where
+
+import Parsley.Prelude (many, eof)
+
+skip horizontal = /[ \t\r]+/
+skip hashComment = /#[^\r\n]*/
+skip slashComment = /\/\/[^\r\n]*/
+token newline = /\n/
+token variable = /@[A-Za-z_\x80-\xFF][A-Za-z_0-9\x80-\xFF]*/ :: Text
+token ident = /[A-Za-z_+.\x80-\xFF][A-Za-z_0-9+.*\x80-\xFF-]*/ :: Text
+token number = /0[xX][0-9A-Fa-f]+|[0-9]+(\.[0-9]+)*/ :: Text
+token quoted = /'([^'\\\r\n\x00]|\\[^\r\n\x00])*'|"([^"\\\r\n\x00]|\\[^\r\n\x00])*"/ :: Text
+
+data Manifest = Manifest [Statement]
+data Statement = Directive Text Expr | Variable Text Expr
+data Field = Field Text Expr
+data Expr
+  = Word Text
+  | NegativeWord Text
+  | Reference Text
+  | Number Text
+  | Quoted Text
+  | BooleanTrue
+  | BooleanFalse
+  | Path Expr [Expr]
+  | Block [Field]
+
+manifest :: Manifest
+manifest = Manifest <$> (many newline *> many (statement <* many newline)) <* eof
+
+statement :: Statement
+statement
+  = Directive <$> (ident <* ":") <*> expr
+  | Variable <$> (variable <* ":") <*> expr
+
+expr :: Expr
+expr
+  = Block <$> ("{" *> many newline *> many (field <* many newline) <* "}")
+  | Path <$> atom <*> many ("/" *> atom)
+
+field :: Field
+field = Field <$> ("-" *> ident <* "=") <*> expr
+
+atom :: Expr
+atom
+  = "true" *> pure BooleanTrue
+  | "True" *> pure BooleanTrue
+  | "false" *> pure BooleanFalse
+  | "False" *> pure BooleanFalse
+  | Word <$> ident
+  | NegativeWord <$> ("-" *> ident)
+  | NegativeWord <$> ("-" *> number)
+  | Reference <$> variable
+  | Number <$> number
+  | Quoted <$> quoted
+
+example "empty" : "" parses-to Manifest []
+example "project" : "Project : NextOS" parses-to Manifest [Directive "Project" (Path (Word "NextOS") [])]

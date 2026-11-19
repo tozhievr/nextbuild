@@ -204,7 +204,7 @@ Array directives(const Analysis& analysis, const std::string& typed) {
 Array values(const std::string& directive, const std::string& typed, const Analysis& analysis) {
     static const std::map<std::string, Args> choices{
         {"SetNextBuildDrawProgress", {"True", "False"}},
-        {"SetStandard", {"c++20", "c++23", "c++2b", "c++2c", "c++2d", "c++26"}},
+        {"SetStandard", {"c++26", "c++2c", "c++23", "c++2b", "c++20", "c++2d"}},
         {"SetCompiler", {"clang++", "clang"}},
         {"SetProductKind", {"nxflat", "library", "host"}},
         {"SetLibraryKind", {"host", "next"}}, {"LibraryKind", {"host", "next"}},

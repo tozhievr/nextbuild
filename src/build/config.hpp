@@ -1,5 +1,5 @@
 #pragma once
-#include "nextbuild.hpp"
+#include "manifest.hpp"
 
 namespace nb {
 inline const Args project_directives{

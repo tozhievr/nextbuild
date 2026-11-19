@@ -1,22 +1,75 @@
-cmake_minimum_required(VERSION 3.21)
-project(nextbuild VERSION 0.1.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.30)
+project(nextbuild VERSION 0.1.0 LANGUAGES C CXX)
 
-add_executable(nextbuild main.cpp build.cpp compile.cpp product.cpp process.cpp lsp.cpp)
+include(GNUInstallDirs)
+include(CTest)
+
+set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+set(CMAKE_CXX_EXTENSIONS NO)
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+set(CMAKE_C_STANDARD 23)
+set(CMAKE_C_STANDARD_REQUIRED YES)
+set(CMAKE_C_EXTENSIONS NO)
+
+if(MSVC)
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/utf-8>")
+elseif(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-finput-charset=UTF-8>")
+endif()
+
+add_library(nextbuild_manifest_generated STATIC generated/manifest/parser.c)
+target_include_directories(nextbuild_manifest_generated PUBLIC generated/manifest)
+target_compile_definitions(nextbuild_manifest_generated PUBLIC PARSLEY_STATIC)
+target_compile_definitions(nextbuild_manifest_generated INTERFACE PARSLEY_NO_COMPAT)
+if(UNIX AND NOT APPLE)
+    target_link_libraries(nextbuild_manifest_generated PRIVATE m)
+endif()
+
+add_library(nextbuild_manifest STATIC
+    src/manifest/evaluate.cpp
+    src/manifest/parse.cpp
+    src/support/files.cpp
+)
+target_include_directories(nextbuild_manifest PUBLIC src/manifest src/support)
+target_link_libraries(nextbuild_manifest PRIVATE nextbuild_manifest_generated)
+
+add_executable(nextbuild
+    src/app/main.cpp
+    src/build/cli.cpp
+    src/build/compile.cpp
+    src/build/product.cpp
+    src/lsp/server.cpp
+    src/platform/process.cpp
+)
+target_include_directories(nextbuild PRIVATE src/build src/lsp src/platform)
+target_link_libraries(nextbuild PRIVATE nextbuild_manifest)
 if(MINGW)
     target_link_options(nextbuild PRIVATE -municode)
 endif()
-if(MSVC)
-    target_compile_options(nextbuild PRIVATE /utf-8)
-endif()
-set_target_properties(nextbuild PROPERTIES
-    CXX_STANDARD 23
-    CXX_STANDARD_REQUIRED YES
-    CXX_EXTENSIONS NO
-)
-install(TARGETS nextbuild RUNTIME DESTINATION bin)
+install(TARGETS nextbuild RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(FILES generated/manifest/LICENSE DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/nextbuild"
+        RENAME Parsley-LICENSE)
 
-include(CTest)
+find_program(PARSLEY_EXECUTABLE NAMES parsley DOC "Parsley 2.35.1 executable for regenerating the manifest parser")
+if(PARSLEY_EXECUTABLE)
+    foreach(mode IN ITEMS regenerate check)
+        add_custom_target(manifest-${mode}
+            COMMAND "${CMAKE_COMMAND}"
+                "-DPARSLEY=${PARSLEY_EXECUTABLE}"
+                "-DROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/parsley-${mode}"
+                "-DMODE=${mode}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ManifestParser.cmake"
+            VERBATIM
+        )
+    endforeach()
+endif()
+
 if(BUILD_TESTING)
+    add_executable(nextbuild_manifest_tests tests/manifest.cpp)
+    target_link_libraries(nextbuild_manifest_tests PRIVATE nextbuild_manifest)
+    add_test(NAME nextbuild.manifest COMMAND nextbuild_manifest_tests)
     add_test(NAME nextbuild.lsp COMMAND "${CMAKE_COMMAND}"
         "-DNEXTBUILD=$<TARGET_FILE:nextbuild>"
         "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/lsp test"

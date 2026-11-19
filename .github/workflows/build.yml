@@ -1,6 +1,9 @@
-name: C++23 build
+name: C++26 build
 
 on: [push, pull_request]
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -11,25 +14,39 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - name: Install LLVM on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = '22.1.8'
+          $archive = "clang+llvm-$version-x86_64-pc-windows-msvc.tar.xz"
+          $download = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version"
+          curl.exe --fail --location --retry 3 "$download/$archive" --output "$env:RUNNER_TEMP/$archive"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          tar.exe -xf "$env:RUNNER_TEMP/$archive" -C "$env:RUNNER_TEMP"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "$env:RUNNER_TEMP/clang+llvm-$version-x86_64-pc-windows-msvc/bin" >> $env:GITHUB_PATH
       - name: Install LLVM on Linux
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld llvm
+          curl --fail --location --retry 3 https://apt.llvm.org/llvm.sh --output "$RUNNER_TEMP/llvm.sh"
+          sudo bash "$RUNNER_TEMP/llvm.sh" 22
+          sudo apt-get install -y clang-22 llvm-22 lld-22
+          echo "/usr/lib/llvm-22/bin" >> "$GITHUB_PATH"
       - name: Install LLVM on macOS
         if: runner.os == 'macOS'
         run: |
-          brew install llvm lld
-          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          brew install llvm@22 lld
+          echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
           echo "SDKROOT=$(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
-      - name: Configure on Windows
-        if: runner.os == 'Windows'
-        run: cmake -S . -B build "-DNEXTBUILD_TEST_CLANG=C:/Program Files/LLVM/bin/clang++.exe"
-      - name: Configure on Linux and macOS
-        if: runner.os != 'Windows'
-        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --parallel
       - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure --no-tests=error
+        run: ctest --test-dir build --output-on-failure --no-tests=error
+      - name: Install
+        run: cmake --install build --prefix build/install
