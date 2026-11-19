@@ -169,6 +169,41 @@ fs::path required_tool(const Args& names, const fs::path& adjacent) {
         if (auto exe = tool(name, adjacent); !exe.empty()) return exe;
     throw std::runtime_error("required tool not found: " + names.front());
 }
+namespace {
+Paths read_dependencies(const fs::path& depfile) {
+    constexpr std::string_view target = "nextbuild-object:";
+    const auto source = read(depfile);
+    if (!source.starts_with(target)) throw std::runtime_error("invalid compiler dependency file: " + utf8(depfile));
+    Paths result;
+    std::string word;
+    const auto store = [&] {
+        if (!word.empty()) result.push_back(path(std::exchange(word, {})));
+    };
+    for (auto i = target.size(); i < source.size(); ++i) {
+        const auto c = source[i];
+        if (c == '\\' && i + 1 < source.size()) {
+            const auto next = source[i + 1];
+            if (next == '\n' || next == '\r') {
+                ++i;
+                if (next == '\r' && i + 1 < source.size() && source[i + 1] == '\n') ++i;
+                store();
+                continue;
+            }
+            if (next == ' ' || next == '\t' || next == '#' || next == '\\') {
+                word += next;
+                ++i;
+                continue;
+            }
+        }
+        if (c == '$' && i + 1 < source.size() && source[i + 1] == '$') ++i;
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') store();
+        else word += c;
+    }
+    store();
+    return result;
+}
+}
+
 bool outdated(const fs::path& output, const Paths& inputs) {
     if (!fs::is_regular_file(output)) return true;
     const auto time = fs::last_write_time(output);
@@ -245,6 +280,10 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
         const auto pcm = pcm_dir / path(bmi_name + ".pcm");
         auto args = driver;
         if (!unit.assembly) args.push_back("-std=" + c.standard);
+        const bool track_headers = !unit.assembly || unit.file.extension() == ".S";
+        auto depfile = object;
+        depfile += ".d";
+        if (track_headers) args.insert(args.end(), {"-MD", "-MF", utf8(depfile), "-MT", "nextbuild-object"});
         args.insert(args.end(), c.flags.begin(), c.flags.end());
         for (const auto& dir : c.modules) args.push_back("-fprebuilt-module-path=" + utf8(dir));
         Paths inputs = external_pcms;
@@ -263,13 +302,19 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
         Json::Array arguments;
         for (const auto& arg : args) arguments.emplace_back(arg);
         const auto previous = old.find(source);
-        const bool dirty = force || previous == old.end() ||
+        const bool missing_deps = track_headers && !fs::is_regular_file(depfile);
+        if (track_headers && !missing_deps) {
+            const auto headers = read_dependencies(depfile);
+            inputs.insert(inputs.end(), headers.begin(), headers.end());
+        }
+        const bool dirty = force || missing_deps || previous == old.end() ||
             previous->second["arguments"].dump() != Json(arguments).dump() ||
             outdated(object, inputs) || (unit.bmi && outdated(pcm, inputs));
         if (dirty) {
             print_command("cm", args, !quiet && !c.progress);
             fs::remove(object);
             if (unit.bmi) fs::remove(pcm);
+            if (track_headers) fs::remove(depfile);
             try { run(args); }
             catch (...) {
                 fs::remove(object);
