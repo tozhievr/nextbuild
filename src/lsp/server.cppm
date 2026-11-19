@@ -152,14 +152,20 @@ Analysis analyze(const std::string& text, const std::string& uri) {
                 diagnostic(statement.line, statement.column, width(statement.name),
                            "directive '" + statement.name + "' is unavailable in this manifest kind");
         }
+        const auto issues = semantic_diagnostics(text);
+        std::vector<std::size_t> line_starts{0};
+        if (!issues.empty()) {
+            for (std::size_t offset = 0; offset < text.size(); ++offset)
+                if (text[offset] == '\n') line_starts.push_back(offset + 1);
+        }
         const auto at_offset = [&](std::size_t offset) {
-            const auto prefix = std::string_view(text).substr(0, std::min(offset, text.size()));
-            const auto newline = prefix.rfind('\n');
-            auto line = newline == std::string_view::npos ? prefix : prefix.substr(newline + 1);
-            if (newline == std::string_view::npos && line.starts_with("\xef\xbb\xbf")) line.remove_prefix(3);
-            return position(static_cast<int>(std::ranges::count(prefix, '\n')), width(std::string(line)));
+            offset = std::min(offset, text.size());
+            const auto row = std::upper_bound(line_starts.begin(), line_starts.end(), offset) - 1;
+            auto line = std::string_view(text).substr(*row, offset - *row);
+            if (row == line_starts.begin() && line.starts_with("\xef\xbb\xbf")) line.remove_prefix(3);
+            return position(static_cast<int>(row - line_starts.begin()), width(std::string(line)));
         };
-        for (const auto& issue : semantic_diagnostics(text)) {
+        for (const auto& issue : issues) {
             const auto end = issue.offset + std::max(issue.length, 1uz);
             analysis.diagnostics.push_back(Object{
                 {"range", Object{{"start", at_offset(issue.offset)}, {"end", at_offset(end)}}},

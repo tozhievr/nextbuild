@@ -2,6 +2,7 @@ module;
 #include <cstdint>
 #include <filesystem>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -170,10 +171,11 @@ fs::path required_tool(const Args& names, const fs::path& adjacent) {
     throw std::runtime_error("required tool not found: " + names.front());
 }
 namespace {
-Paths read_dependencies(const fs::path& depfile) {
+std::optional<Paths> read_dependencies(const fs::path& depfile) {
     constexpr std::string_view target = "nextbuild-object:";
+    if (!fs::is_regular_file(depfile)) return std::nullopt;
     const auto source = read(depfile);
-    if (!source.starts_with(target)) throw std::runtime_error("invalid compiler dependency file: " + utf8(depfile));
+    if (!source.starts_with(target)) return std::nullopt;
     Paths result;
     std::string word;
     const auto store = [&] {
@@ -302,12 +304,9 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
         Json::Array arguments;
         for (const auto& arg : args) arguments.emplace_back(arg);
         const auto previous = old.find(source);
-        const bool missing_deps = track_headers && !fs::is_regular_file(depfile);
-        if (track_headers && !missing_deps) {
-            const auto headers = read_dependencies(depfile);
-            inputs.insert(inputs.end(), headers.begin(), headers.end());
-        }
-        const bool dirty = force || missing_deps || previous == old.end() ||
+        const auto headers = track_headers ? read_dependencies(depfile) : std::nullopt;
+        if (headers) inputs.insert(inputs.end(), headers->begin(), headers->end());
+        const bool dirty = force || (track_headers && !headers) || previous == old.end() ||
             previous->second["arguments"].dump() != Json(arguments).dump() ||
             outdated(object, inputs) || (unit.bmi && outdated(pcm, inputs));
         if (dirty) {
@@ -319,6 +318,7 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
             catch (...) {
                 fs::remove(object);
                 if (unit.bmi) fs::remove(pcm);
+                if (track_headers) fs::remove(depfile);
                 throw;
             }
             ++compiled;
