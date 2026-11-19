@@ -1,4 +1,9 @@
 module;
+#include <filesystem>
+#include <stdexcept>
+#include <string>
+#include <variant>
+#include <vector>
 #include <iostream>
 #include <limits>
 

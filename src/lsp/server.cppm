@@ -1,4 +1,13 @@
 module;
+#include <cctype>
+#include <filesystem>
+#include <map>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
+#include <vector>
 #include <map>
 #include <string>
 #include <algorithm>

@@ -1,4 +1,9 @@
 module;
+#include <filesystem>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 #include <cstdlib>
 #include <system_error>
 #include <cerrno>
