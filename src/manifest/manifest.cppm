@@ -11,7 +11,6 @@ module;
 #include <stdexcept>
 #include <variant>
 #include <algorithm>
-#include <ranges>
 #include <span>
 #include <charconv>
 #include "parser.h"
@@ -201,11 +200,9 @@ Document parse(std::string_view source) {
 
     Document result;
     result.reserve(list.len);
-    const auto statements = std::span(list.items, list.len);
-    const auto spans = std::span(metadata.items, metadata.item_count);
-    for (const auto& [statement, location] : std::views::zip(statements, spans)) {
-        const auto& node = *statement;
-        const auto& span = *location;
+    for (std::size_t index = 0; index < list.len; ++index) {
+        const auto& node = *list.items[index];
+        const auto& span = *metadata.items[index];
         const auto line = static_cast<int>(span.source_line);
         const auto column = utf16_column_at(source, span.source_offset);
         if (node.tag == nextbuildmanifest_STATEMENT_VARIABLE) {
@@ -304,8 +301,9 @@ Value evaluate(const Expr& expr, const Variables& vars) {
     }
     case Kind::block: {
         Layout result;
-        for (const auto& [key, part] : std::views::zip(expr.keys, expr.parts)) {
-            const auto address = number(scalar(evaluate(part, vars)));
+        for (std::size_t index = 0; index < expr.keys.size(); ++index) {
+            const auto& key = expr.keys[index];
+            const auto address = number(scalar(evaluate(expr.parts[index], vars)));
             const auto previous = std::ranges::find(result, key, &Layout::value_type::first);
             if (previous == result.end()) result.emplace_back(key, address);
             else previous->second = address;
