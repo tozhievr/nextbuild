@@ -14,3 +14,20 @@ set_target_properties(nextbuild PROPERTIES
     CXX_EXTENSIONS NO
 )
 install(TARGETS nextbuild RUNTIME DESTINATION bin)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_test(NAME nextbuild.lsp COMMAND "${CMAKE_COMMAND}"
+        "-DNEXTBUILD=$<TARGET_FILE:nextbuild>"
+        "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/lsp test"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/lsp.cmake")
+    find_program(NEXTBUILD_TEST_CLANG NAMES clang++)
+    if(NEXTBUILD_TEST_CLANG)
+        add_test(NAME nextbuild.products COMMAND "${CMAKE_COMMAND}"
+            "-DNEXTBUILD=$<TARGET_FILE:nextbuild>"
+            "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/product test"
+            "-DCLANG=${NEXTBUILD_TEST_CLANG}"
+            "-DEXE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke.cmake")
+    endif()
+endif()
