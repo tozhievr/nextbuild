@@ -12,6 +12,7 @@ function(run)
 endfunction()
 
 file(MAKE_DIRECTORY "${TEST_ROOT}/provider/src" "${TEST_ROOT}/consumer/src" "${TEST_ROOT}/flat/src")
+file(REMOVE "${TEST_ROOT}/compile_commands.json")
 set(compiler "SetCompiler : '${CLANG}'")
 file(WRITE "${TEST_ROOT}/provider/.nextbuild"
     "Project : Provider\nSetLibraryKind : host\nSetStandard : c++23\n${compiler}\nSetSource : @NEXTOS_MAIN_ROOT / provider / src\n")
