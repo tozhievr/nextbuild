@@ -1,0 +1,132 @@
+name: Release Nextbuild
+
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment to commit before building
+        type: choice
+        options: [none, patch, minor, major]
+        default: none
+
+concurrency:
+  group: nextbuild-release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      ref: ${{ steps.version.outputs.ref }}
+      tag: ${{ steps.version.outputs.tag }}
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - id: version
+        shell: bash
+        env:
+          BUMP: ${{ inputs.bump || 'none' }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$BUMP" != none ]]; then
+            version=$(node tools/version.mjs bump "$BUMP")
+            if git show-ref --verify --quiet "refs/tags/v$version"; then
+              echo "Tag v$version already exists" >&2
+              exit 1
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add VERSION extension/package.json extension/package-lock.json
+            git commit -m "chore(release): bump version to $version"
+            git push origin HEAD:refs/heads/main
+          else
+            version=$(node tools/version.mjs verify)
+          fi
+          tag="v$version"
+          ref=$(git rev-parse HEAD)
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            if [[ $(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true) == false ]]; then
+              echo "Release $tag is already published"
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            ref=$(git rev-list -1 "$tag")
+            if [[ $(git show "$ref:VERSION" | tr -d '\r\n') != "$version" ]]; then
+              echo "$tag does not point to a commit with VERSION $version" >&2
+              exit 1
+            fi
+          fi
+          {
+            echo "tag=$tag"
+            echo "ref=$ref"
+            echo "publish=true"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.prepare.outputs.ref }}
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish verified artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          COMMIT: ${{ needs.prepare.outputs.ref }}
+        run: |
+          shopt -s nullglob
+          archives=(artifacts/*.tar.gz)
+          extensions=(artifacts/*.vsix)
+          if [[ "${#archives[@]}" -ne 3 || "${#extensions[@]}" -ne 1 ]]; then
+            echo "Expected three native archives and one VSIX" >&2
+            exit 1
+          fi
+          (cd artifacts && sha256sum ./*.tar.gz ./*.vsix > SHA256SUMS)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            test "$(git rev-list -1 "$TAG")" = "$COMMIT"
+          else
+            git tag -a "$TAG" "$COMMIT" -m "Nextbuild $TAG"
+            git push origin "refs/tags/$TAG"
+          fi
+          state=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || true)
+          if [[ "$state" == false ]]; then
+            exit 0
+          fi
+          if [[ "$state" != true ]]; then
+            gh release create "$TAG" --verify-tag --draft --title "Nextbuild $TAG" --generate-notes
+          fi
+          gh release upload "$TAG" "${archives[@]}" "${extensions[@]}" artifacts/SHA256SUMS --clobber
+          gh release edit "$TAG" --draft=false

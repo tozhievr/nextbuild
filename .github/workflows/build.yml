@@ -1,6 +1,13 @@
-name: C++26 build
+name: Build and test
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -14,6 +21,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
       - name: Install LLVM on Windows
@@ -44,9 +53,61 @@ jobs:
           echo "SDKROOT=$(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
-      - name: Build
-        run: cmake --build build --parallel
-      - name: Test
-        run: ctest --test-dir build --output-on-failure --no-tests=error
-      - name: Install
-        run: cmake --install build --prefix build/install
+      - name: Build and test the bootstrap
+        run: |
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure --no-tests=error
+      - name: Build Nextbuild with Nextbuild
+        shell: pwsh
+        run: |
+          $suffix = if ($IsWindows) { '.exe' } else { '' }
+          & "./build/nextbuild$suffix" --root "$PWD" .nextbuild
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $binary = "$PWD/.build/nextbuild/nextbuild$suffix"
+          $version = (Get-Content VERSION -Raw).Trim()
+          if ((& $binary --version) -ne "nextbuild $version" -or $LASTEXITCODE -ne 0) {
+            throw 'The self-built binary does not match VERSION'
+          }
+          $clang = (Get-Command clang++ -CommandType Application).Source.Replace('\','/')
+          cmake "-DNEXTBUILD=$binary" "-DTEST_ROOT=$PWD/build/self-lsp" -P tests/lsp.cmake
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake "-DNEXTBUILD=$binary" "-DTEST_ROOT=$PWD/build/self-products" "-DCLANG=$clang" "-DEXE_SUFFIX=$suffix" -P tests/smoke.cmake
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path build/dist,build/dist/stage | Out-Null
+          Copy-Item -LiteralPath $binary -Destination build/dist/stage
+          Copy-Item -LiteralPath generated/manifest/LICENSE -Destination build/dist/stage/Parsley-LICENSE
+          Push-Location build/dist/stage
+          cmake -E tar czf "../nextbuild-$version-$env:RUNNER_OS-$env:RUNNER_ARCH.tar.gz" -- "nextbuild$suffix" Parsley-LICENSE
+          $status = $LASTEXITCODE
+          Pop-Location
+          exit $status
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ runner.os }}-${{ runner.arch }}
+          path: build/dist/*.tar.gz
+          if-no-files-found: error
+  extension:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - name: Verify synchronized version and package the extension
+        shell: bash
+        run: |
+          version=$(node tools/version.mjs verify)
+          node --check extension/extension.js
+          npm ci --ignore-scripts --prefix extension
+          mkdir -p build/dist
+          cd extension
+          npx --yes @vscode/vsce@3.7.1 package --out "../build/dist/nextbuild-$version.vsix"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: editor-extension
+          path: build/dist/*.vsix
+          if-no-files-found: error
