@@ -1,120 +1,122 @@
 # nextbuild
 
-Сборщик проектов NextOS и языковой сервер для файлов .nextbuild и
-.nextbuild-dependency. Сборщик компилирует C++ модули и ассемблер, создаёт
-нативные приложения и статические библиотеки, упаковывает freestanding-образы
-NextOS в формат NXFL. LSP поддерживает диагностику, автодополнение, справку и
-переход к определениям переменных.
+`nextbuild` собирает обычные C++-проекты, проекты с именованными модулями и
+freestanding-образы. Рецепты хранятся в `.nextbuild`; экспорт зависимостей
+описывается в `.nextbuild-dependency`. Тот же исполняемый файл запускает
+языковой сервер для обоих форматов.
 
-## Требования
+## Быстрый старт
 
-| Компонент | Назначение |
+Сохраните в корне проекта файл `.nextbuild`:
+
+```text
+Project : Hello
+SetSource : @PROJECT_ROOT / src
+SetStandard : c++26
+```
+
+Добавьте `src/main.cpp`:
+
+```cpp
+#include <iostream>
+
+int main() {
+    std::cout << "Hello from nextbuild\n";
+}
+```
+
+В корне проекта выполните `nextbuild`. Программа появится в
+`.build/hello/hello` (`hello.exe` на Windows). Нативное приложение — тип
+сборки по умолчанию. `SetStandard` управляет компилятором целевого проекта;
+без этой директивы используется C++20.
+
+## Установка из исходников
+
+Нужны CMake 3.30+, Ninja и LLVM Clang 22+ с `clang-scan-deps`. На Windows
+используйте Developer PowerShell for VS с Windows SDK. На macOS
+используйте upstream LLVM и Xcode Command Line Tools. На Linux добавьте
+каталог соответствующей версии LLVM в `PATH`.
+
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+cmake --build build
+ctest --test-dir build --output-on-failure
+cmake --install build --prefix build/install
+```
+
+Добавьте `build/install/bin` в `PATH`. Для сборки приложений и библиотек
+нужен Clang, для архивов — `llvm-ar` или `ar`, для NXFL — LLD и
+`llvm-objcopy`. Установленный `nextbuild` использует встроенный парсер.
+
+## Команды
+
+| Команда | Действие |
 | --- | --- |
-| CMake 3.30+ и Ninja | Конфигурация, сборка и тестирование |
-| LLVM Clang 22+ и системная стандартная библиотека C++ | Компиляция nextbuild в режиме C++26 и сгенерированного парсера в режиме C23 |
-| Clang с поддержкой -fmodule-output | Сборка проектов с C++ модулями |
-| llvm-ar или ar | Архивация статических библиотек |
-| LLD и llvm-objcopy | Линковка и упаковка NXFL |
-| Parsley 2.35.1 | Регенерация парсера после изменения грамматики |
+| `nextbuild` | Собрать проекты, найденные в рабочей области |
+| `nextbuild apps/hello` | Собрать проект в каталоге или по пути к манифесту |
+| `nextbuild --root DIR --list` | Показать найденные манифесты от указанного корня |
+| `nextbuild -B apps/hello` | Принудительно пересобрать цель |
+| `nextbuild --clean apps/hello` | Удалить каталог артефактов цели |
+| `nextbuild lsp --stdio` | Запустить языковой сервер |
 
-На Windows запустите команды из Developer PowerShell for VS с установленным
-Windows SDK. На macOS установите Xcode Command Line Tools и используйте
-upstream LLVM, например из Homebrew. На Linux добавьте каталог bin выбранной
-версии LLVM в PATH. Обычная сборка использует сохранённые результаты
-генерации и выполняется без Parsley, Python и доступа к сети.
+`--root` задаёт `@PROJECT_ROOT` и базу относительных путей. Без него
+сборщик использует ближайший родительский каталог с `.nextbuild` либо
+текущий каталог. `@NEXTOS_MAIN_ROOT` принимается как совместимый псевдоним
+для существующих рецептов. Компиляция учитывает изменения исходников,
+заголовков, модулей и аргументов компилятора.
 
-## Сборка и установка
+### Типы продуктов
 
-    cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
-    cmake --build build --parallel
-    ctest --test-dir build --output-on-failure
-    cmake --install build --prefix build/install
-
-Исполняемый файл находится в build/install/bin. На Windows имя файла
-nextbuild.exe. Чтобы использовать команду из примеров, добавьте этот каталог
-в PATH. Если Clang для тестовых проектов находится вне PATH, передайте
--DNEXTBUILD_TEST_CLANG=/path/to/clang++ при конфигурации.
-
-## Использование
-
-    nextbuild --root /path/to/NextOS --list
-    nextbuild --root /path/to/NextOS apps/demo
-    nextbuild --root /path/to/NextOS -B apps/demo
-    nextbuild --root /path/to/NextOS --clean apps/demo
-
-Цель можно указать каталогом проекта или файлом с расширением .nextbuild.
-Без цели сборщик обходит дерево в поисках проектов с непустым файлом
-.nextbuild. Каталог docs исключается из поиска. Параметр --root задаёт
-@NEXTOS_MAIN_ROOT и базу относительных путей. Параметр -B принудительно
-пересобирает артефакты, а -q скрывает обычный вывод. Команда --clean удаляет
-каталоги сборки выбранных проектов. По умолчанию они находятся в .build/<имя>.
-
-Пример apps/demo/.nextbuild для приложения с main в apps/demo/src.
-
-    Project : Demo
-    Version : 0.1.0
-    SetProductKind : host
-    SetStandard : c++26
-    SetCompiler : clang++
-    SetSource : @NEXTOS_MAIN_ROOT / apps / demo / src
-
-SetStandard управляет стандартом исходников целевого проекта. Значение по
-умолчанию для проекта — c++20. Кавычки нужны для значений с пробелами и
-удобны для путей и флагов. Комментарии начинаются с # или //.
-
-### Форматы сборки
-
-| Тип | Конфигурация | Результат |
-| --- | --- | --- |
-| host | SetProductKind : host | Нативное приложение |
-| library | SetLibraryKind : host или next | Статическая библиотека и каталог pcm |
-| nxflat | SetExecutableLayout с именами секций и адресами | .nxflat и .labels.json |
-
-Записи блока SetExecutableLayout имеют вид - start = 0x10000.
-По умолчанию NXFL и библиотеки профиля next собираются под
-x86_64-unknown-none-elf. Манифест может задать компилятор, стандарт,
-целевую платформу, флаги, зависимости и каталог результатов.
-
-Чтобы использовать экспорт другой библиотеки, укажите в проекте
-UseDependency с путём к .nextbuild-dependency. В этом файле RequireProject
-задаёт путь к проекту поставщика, AddModulePath : @DEP_PCM подключает BMI, а
-LinkLibrary : @DEP_LIBRARY передаёт архив линковщику. Сборщик обновляет
-compile_commands.json в каталоге сборки и объединённую базу в корне.
-
-### Настройка редактора
-
-Укажите nextbuild как исполняемый файл языкового сервера и передайте ему
-аргументы lsp и --stdio. Зарегистрируйте сервер для файлов .nextbuild и
-.nextbuild-dependency. Корень рабочей области передаётся через LSP initialize.
-
-## Структура проекта
-
-| Каталог | Назначение |
+| Рецепт | Артефакт |
 | --- | --- |
-| src/app | Точка входа и выбор CLI или LSP |
-| src/build | Конфигурация проектов, компиляция, линковка и NXFL |
-| src/manifest | Адаптер Parsley, модель и вычисление выражений |
-| src/lsp | Обработчики LSP и справочник директив |
-| src/platform | Запуск дочерних процессов Windows и POSIX |
-| src/support | Работа с файлами, путями и JSON |
-| grammar | Исходная грамматика манифеста |
-| generated/manifest | Вывод генератора Parsley |
-| tests | Тесты манифеста, LSP и сборки продуктов |
+| `SetProductKind : host` | Нативное приложение |
+| `SetProductKind : library` | Статический архив и BMI |
+| `SetLibraryKind : freestanding` | Статический архив и BMI для bare-metal цели |
+| `SetExecutableLayout : { ... }` | Образ NXFL и JSON-карта секций |
 
-## Обновление грамматики
+`SetTargetTriple` переопределяет целевой triple. Для NXFL размещение секций
+задаётся адресами, например `- start = 0x10000`. NXFL использует промежуточный
+x86-64 ELF. Базы `compile_commands.json` записываются в каталог сборки и
+в корень рабочей области.
 
-Внесите изменения в grammar/NextbuildManifest.parsley и пересоздайте
-парсер той же версией Parsley. Если в PATH установлена другая версия,
-передайте путь к нужному бинарнику при конфигурации.
+### Зависимости
 
-    cmake -S . -B build -DPARSLEY_EXECUTABLE=/path/to/parsley
-    cmake --build build --target manifest-regenerate
-    cmake --build build --target manifest-check
-    cmake --build build --parallel
-    ctest --test-dir build --output-on-failure
+Директива `Depend` задаёт порядок сборки. `UseDependency` загружает описание
+экспорта, собирает поставщика и подключает его модули, архивы и флаги.
+Пример файла `libs/core/.nextbuild-dependency`:
 
-Оба таргета запускают примеры из грамматики перед генерацией.
-manifest-check сравнивает свежий вывод с файлами в generated/manifest.
-Изменения грамматики и сгенерированные файлы следует сохранять вместе.
-Парсер подключается статически через C ABI. Его лицензия хранится в
-generated/manifest/LICENSE и устанавливается вместе с программой.
+```text
+Dependency : Core
+RequireProject : @PROJECT_ROOT / libs / core
+AddModulePath : @DEP_PCM
+LinkLibrary : @DEP_LIBRARY
+```
+
+## Языковой сервер
+
+Настройте в редакторе команду `nextbuild lsp --stdio` для файлов
+`.nextbuild` и `.nextbuild-dependency`. Сервер предоставляет подсказки
+директив и путей, справку, переход к определениям переменных и диагностику.
+Семантика описана в PSL и проверяет имена директив, ссылки на переменные и
+типы значений для путей, логических настроек и блоков размещения.
+
+## Разработка
+
+Точка входа находится в `src/app/main.cpp`. Остальной C++ расположен в
+`.cppm` по подсистемам в `src/build`, `src/manifest`, `src/lsp`,
+`src/platform` и `src/support`. В `generated/manifest` хранятся
+сгенерированные файлы ISO C23 и лицензия Parsley.
+
+При изменении грамматики или `NextbuildManifest.psem` используйте
+Parsley 2.35.1:
+
+```sh
+cmake -S . -B build -DPARSLEY_EXECUTABLE=/path/to/parsley
+cmake --build build --target manifest-regenerate
+cmake --build build --target manifest-check
+ctest --test-dir build --output-on-failure
+```
+
+Сохраняйте изменения в `grammar/` вместе с обновлёнными
+`generated/manifest/`. `manifest-check` проверяет примеры и сравнивает
+свежий вывод генератора с сохранёнными файлами.
