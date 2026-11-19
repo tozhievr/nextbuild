@@ -1,0 +1,59 @@
+{-# LANGUAGE Sem1 #-}
+semantics NextbuildManifest where
+
+import NextbuildManifest
+import Parsley.Sem.Prelude
+
+type Ty = Scalar | Boolean | PathValue | Layout | Unit
+kind ManifestVariable
+
+builtin "@PROJECT_ROOT" :: ManifestVariable PathValue
+builtin "@NEXTOS_MAIN_ROOT" :: ManifestVariable PathValue
+builtin "@DEP_BUILD_ROOT" :: ManifestVariable PathValue
+builtin "@DEP_PCM" :: ManifestVariable PathValue
+builtin "@DEP_LIBRARY" :: ManifestVariable PathValue
+
+diag NB_UNKNOWN :: Error "Unknown directive '{name}'"
+diag NB_UNDEFINED :: Error "Undefined variable '{name}'"
+diag NB_BOOL :: Error "'{name}' expects a boolean"
+diag NB_LAYOUT :: Error "'{name}' expects a layout block"
+diag NB_PATH :: Error "'{name}' expects a path"
+
+node Word _ where
+  type = Scalar
+
+node NegativeWord _ where
+  type = Scalar
+
+node Number _ where
+  type = Scalar
+
+node Quoted _ where
+  type = Scalar
+
+node BooleanTrue where
+  type = Boolean
+
+node BooleanFalse where
+  type = Boolean
+
+node Path first rest where
+  type = if length rest == 0 then typeOf first else PathValue
+
+node Block _ where
+  type = Layout
+
+node Variable name value where
+  declare ManifestVariable name (typeOf value)
+  type = Unit
+
+node Reference name where
+  symbol <- lookup ManifestVariable name `orFail` NB_UNDEFINED { name = name }
+  type = typeOf symbol
+
+node Directive name value where
+  require (name in ["Project", "Version", "SetBuildRoot", "SetSource", "SetStandard", "SetCompiler", "SetMinCompilerVer", "SetNextBuildDrawProgress", "EnableCompileFlag", "EnableLinkFlag", "AddModulePath", "AddDefine", "SetOutputName", "SetTargetTriple", "SetExecutableLayout", "SetProductKind", "SetLibraryKind", "EnableFeature", "UseDependency", "LinkLibrary", "Depend", "Dependency", "LibraryKind", "RequireProject"]) `orFail` NB_UNKNOWN { name = name }
+  require (name /= "SetNextBuildDrawProgress" || typeOf value == Boolean) `orFail` NB_BOOL { name = name }
+  require (name /= "SetExecutableLayout" || typeOf value == Layout) `orFail` NB_LAYOUT { name = name }
+  require (not (name in ["SetBuildRoot", "SetSource", "AddModulePath", "UseDependency", "LinkLibrary", "Depend", "RequireProject"]) || typeOf value == Scalar || typeOf value == PathValue) `orFail` NB_PATH { name = name }
+  type = Unit
