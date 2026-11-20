@@ -32,16 +32,23 @@ if(UNIX AND NOT APPLE)
     target_link_libraries(nextbuild_manifest_generated PRIVATE m)
 endif()
 
+find_package(Threads REQUIRED)
+add_library(nextbuild_system_runtime STATIC)
+add_library(Nextbuild::SystemRuntime ALIAS nextbuild_system_runtime)
+target_sources(nextbuild_system_runtime PUBLIC FILE_SET CXX_MODULES FILES src/platform/runtime.cppm)
+target_link_libraries(nextbuild_system_runtime PRIVATE Threads::Threads)
+
 add_library(nextbuild_core STATIC)
 target_sources(nextbuild_core PUBLIC FILE_SET CXX_MODULES FILES
     src/support/files.cppm
     src/support/json.cppm
     src/manifest/manifest.cppm
     src/platform/process.cppm
+    src/build/graph.cppm
     src/build/build.cppm
     src/lsp/server.cppm
 )
-target_link_libraries(nextbuild_core PRIVATE nextbuild_manifest_generated)
+target_link_libraries(nextbuild_core PRIVATE nextbuild_manifest_generated nextbuild_system_runtime Threads::Threads)
 target_compile_definitions(nextbuild_core PRIVATE NEXTBUILD_VERSION="${PROJECT_VERSION}")
 
 add_executable(nextbuild src/app/main.cpp)
@@ -69,6 +76,13 @@ if(PARSLEY_EXECUTABLE)
 endif()
 
 if(BUILD_TESTING)
+    file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/runtime_test_main.cpp"
+         CONTENT "import nextbuild.runtime_tests;\nint main(int argc, char** argv) { return runtime_tests(argc, argv); }\n")
+    add_executable(nextbuild_runtime_tests "${CMAKE_CURRENT_BINARY_DIR}/runtime_test_main.cpp")
+    target_sources(nextbuild_runtime_tests PRIVATE FILE_SET CXX_MODULES FILES tests/runtime.cppm)
+    target_link_libraries(nextbuild_runtime_tests PRIVATE nextbuild_system_runtime)
+    add_test(NAME nextbuild.runtime COMMAND nextbuild_runtime_tests "${CMAKE_CURRENT_BINARY_DIR}/stream ready")
+    set_tests_properties(nextbuild.runtime PROPERTIES TIMEOUT 45)
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/manifest_test_main.cpp"
          CONTENT "import nextbuild.manifest_tests;\nint main() { return manifest_tests(); }\n")
     add_executable(nextbuild_manifest_tests "${CMAKE_CURRENT_BINARY_DIR}/manifest_test_main.cpp")

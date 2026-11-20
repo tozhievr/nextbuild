@@ -1,4 +1,7 @@
 module;
+#include <charconv>
+#include <mutex>
+#include <thread>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -21,9 +24,30 @@ import nextbuild.files;
 import nextbuild.manifest;
 import nextbuild.json;
 import nextbuild.process;
+import nextbuild.graph;
 
 namespace nb {
 using Paths = std::vector<fs::path>;
+namespace {
+struct BuildSettings {
+    bool stream = false, color = false;
+};
+BuildSettings settings;
+
+struct LogLine {
+    std::ostringstream text;
+
+    template<class T> LogLine& operator<<(const T& value) {
+        text << value;
+        return *this;
+    }
+
+    ~LogLine() { write_output(false, std::move(text).str()); }
+};
+std::string_view color(std::string_view sequence) {
+    return settings.color ? sequence : std::string_view{};
+}
+}
 struct Config {
     fs::path file, source, output_dir, version_file;
     std::string name = "Untitled", version = "0.0.0", output_name;
@@ -39,7 +63,7 @@ void require_directive(const Statement& item, const Args& allowed, const fs::pat
 Config load_config(const fs::path& file, const fs::path& root);
 Paths discover(const fs::path& root);
 fs::path project_path(const fs::path& target, const fs::path& root);
-fs::path produce(Config& c, const fs::path& root, bool force, bool quiet);
+fs::path produce(Config& c, const fs::path& root, bool force, bool quiet, unsigned jobs);
 fs::path finish_product(Config& c, Args args, const fs::path& bindir,
                         const Paths& objects, bool force, bool quiet);
 fs::path generate(const Config& c);
@@ -159,12 +183,37 @@ void save_database(const fs::path& file, const std::map<std::string, Json>& entr
     write(file, Json(std::move(list)).dump() + '\n');
 }
 void progress(const Config& c, std::size_t done, std::size_t total, const std::string& status, bool quiet) {
-    if (quiet || !c.progress) return;
-    const auto filled = 28 * done / total;
-    std::cout << '\r' << '[' << c.name << "] [" << std::string(filled, '#') << std::string(28-filled, '-')
-              << "] " << std::setw(3) << 100*done/total << "% (" << done << '/' << total << ") " << status;
-    if (done == total) std::cout << '\n';
-    std::cout << std::flush;
+    if (!quiet && c.progress)
+        LogLine() << "    [" << c.name << ' ' << done << '/' << total << "] " << status << '\n';
+}
+
+bool needs_platform_module(const Config& config, const std::vector<Unit>& units) {
+    const bool library = config.product == "library" ||
+        (config.product.empty() && config.layout.empty() && !config.library.empty());
+    if (!library) return false;
+    return config.platform_module || !config.features.empty() ||
+        std::ranges::any_of(units, [](const Unit& unit) {
+            return std::ranges::find(unit.imports, "cmake_generated") != unit.imports.end();
+        });
+}
+
+graph::Edges unit_dependencies(const std::vector<Unit>& units, bool transitive = true) {
+    graph::Edges dependencies(units.size());
+    std::map<std::string, std::size_t> providers;
+    for (std::size_t index = 0; index < units.size(); ++index) {
+        const auto& unit = units[index];
+        std::set<std::size_t> prerequisites;
+        for (const auto& imported : unit.imports) {
+            if (const auto provider = providers.find(imported); provider != providers.end()) {
+                const auto previous = provider->second;
+                prerequisites.insert(previous);
+                if (transitive) prerequisites.insert(dependencies[previous].begin(), dependencies[previous].end());
+            }
+        }
+        dependencies[index].assign(prerequisites.begin(), prerequisites.end());
+        if (unit.bmi) providers.emplace(unit.name(), index);
+    }
+    return dependencies;
 }
 }
 
@@ -218,12 +267,13 @@ bool outdated(const fs::path& output, const Paths& inputs) {
 }
 void print_command(const char* stage, const Args& args, bool enabled) {
     if (!enabled) return;
-    std::cout << "    " << stage;
-    for (std::size_t i = 1; i < args.size(); ++i) std::cout << ' ' << args[i];
-    std::cout << '\n';
+    LogLine output;
+    output << "    " << color("\x1b[36m") << stage << color("\x1b[0m");
+    for (std::size_t i = 1; i < args.size(); ++i) output << ' ' << args[i];
+    output << '\n';
 }
 
-fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
+fs::path produce(Config& c, const fs::path& root, bool force, bool quiet, unsigned jobs) {
     if (c.product.empty()) {
         if (!c.layout.empty()) c.product = "nxflat";
         else if (!c.library.empty()) c.product = "library";
@@ -232,7 +282,7 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
     if (c.product == "nxflat" && c.layout.empty())
         throw std::runtime_error("SetExecutableLayout is required for nxflat products");
     if (c.product == "library" && c.library.empty()) c.library = "host";
-    if (!quiet) std::cout << "==> building " << c.name << ' ' << c.version << " [" << c.product << "]\n"
+    if (!quiet) LogLine() << color("\x1b[1;34m") << "==> building " << color("\x1b[0m") << c.name << ' ' << c.version << " [" << c.product << "]\n"
                           << "    source : " << utf8(c.source) << "\n    output : " << utf8(c.output_dir) << '\n';
     const auto compiler = required_tool({c.compiler});
     const auto version_output = run({utf8(compiler), "--version"});
@@ -245,7 +295,7 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
     const std::string detected = match[1].str();
     if (!c.minimum.empty() && version_parts(detected) < version_parts(c.minimum))
         throw std::runtime_error("compiler " + utf8(compiler) + " version " + detected + " is older than required " + c.minimum);
-    if (!quiet) std::cout << "    compiler: " << utf8(compiler) << " (" << detected << ")\n";
+    if (!quiet) LogLine() << "    compiler: " << utf8(compiler) << " (" << detected << ")\n";
     const auto output_dir = c.output_dir;
     const auto obj_dir = output_dir / "obj", pcm_dir = output_dir / "pcm";
     fs::create_directories(obj_dir);
@@ -255,15 +305,12 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
     Paths sources{c.source};
     sources.insert(sources.end(), c.extra_sources.begin(), c.extra_sources.end());
     auto units = collect(sources, output_dir, {});
-    const bool imports_platform = std::ranges::any_of(units, [](const Unit& unit) {
-        return std::ranges::find(unit.imports, "cmake_generated") != unit.imports.end();
-    });
-    if (c.product == "library" && (c.platform_module || !c.features.empty() || imports_platform)) {
+    if (needs_platform_module(c, units)) {
         generated = generate(c);
         units = collect(sources, output_dir, generated);
     }
     if (units.empty()) {
-        if (!quiet) std::cout << "    warning: no module/asm sources found\n";
+        if (!quiet) LogLine() << "    warning: no module/asm sources found\n";
         return {};
     }
     const auto triple = c.triple.empty() && (c.product == "nxflat" || (c.product == "library" && c.library == "next"))
@@ -280,8 +327,18 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
         for (const auto& entry : fs::directory_iterator(dir))
             if (entry.is_regular_file() && entry.path().extension() == ".pcm") external_pcms.push_back(entry.path());
     }
-    std::size_t compiled = 0, done = 0;
-    for (const auto& unit : units) {
+    struct Compilation {
+        Args args;
+        Paths inputs;
+        fs::path object, pcm, depfile;
+        bool track_headers, bmi;
+        std::string source;
+    };
+    const auto deps = unit_dependencies(units);
+    std::vector<Compilation> commands_to_run;
+    commands_to_run.reserve(units.size());
+    for (std::size_t index = 0; index < units.size(); ++index) {
+        const auto& unit = units[index];
         fs::path relative;
         if (unit.file == generated) relative = "generated/cmake_generated.cppm";
         else for (std::size_t i = 0; i < sources.size(); ++i) {
@@ -312,8 +369,10 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
         if (!unit.assembly && unit.file.extension() != ".c") {
             for (const auto& dir : c.modules) args.push_back("-fprebuilt-module-path=" + utf8(dir));
             inputs.insert(inputs.end(), external_pcms.begin(), external_pcms.end());
-            for (const auto& [name, bmi] : pcms) {
-                args.push_back("-fmodule-file=" + name + "=" + utf8(bmi));
+            for (const auto dependency : deps[index]) {
+                const auto& provider = units[dependency];
+                const auto& bmi = pcms.at(provider.name());
+                args.push_back("-fmodule-file=" + provider.name() + "=" + utf8(bmi));
                 inputs.push_back(bmi);
             }
         }
@@ -323,49 +382,59 @@ fs::path produce(Config& c, const fs::path& root, bool force, bool quiet) {
         if (unit.bmi) args.push_back("-fmodule-output=" + utf8(pcm));
         const auto source = utf8(unit.file);
         args.insert(args.end(), {"-c", source, "-o", utf8(object)});
-        Json::Array arguments;
-        for (const auto& arg : args) arguments.emplace_back(arg);
-        const auto previous = old.find(source);
-        const auto headers = track_headers ? read_dependencies(depfile) : std::nullopt;
-        if (headers) inputs.insert(inputs.end(), headers->begin(), headers->end());
-        const bool dirty = force || (track_headers && !headers) || previous == old.end() ||
-            previous->second["arguments"].dump() != Json(arguments).dump() ||
-            outdated(object, inputs) || (unit.bmi && outdated(pcm, inputs));
-        if (dirty) {
-            print_command("cm", args, !quiet && !c.progress);
-            fs::remove(object);
-            if (unit.bmi) fs::remove(pcm);
-            if (track_headers) fs::remove(depfile);
-            try { run(args); }
-            catch (...) {
-                fs::remove(object);
-                if (unit.bmi) fs::remove(pcm);
-                if (track_headers) fs::remove(depfile);
-                throw;
-            }
-            ++compiled;
-        }
-        commands[source] = Json::Object{{"directory", utf8(fs::current_path())}, {"file", source}, {"arguments", arguments}};
+        commands_to_run.push_back({std::move(args), std::move(inputs), object, pcm, depfile,
+                                   track_headers, unit.bmi, source});
         if (unit.bmi) pcms[unit.name()] = pcm;
         objects.push_back(object);
-        progress(c, ++done, units.size() + 1, utf8(unit.file.filename()) + (dirty ? "" : " (cached)"), quiet);
     }
+
+    std::vector<unsigned char> rebuilt(units.size());
+    std::vector<Json> entries(units.size());
+    std::mutex progress_mutex;
+    std::size_t done = 0;
+    const auto directory = utf8(root);
+    graph::execute(deps, jobs, [&](std::size_t index) {
+        const auto& task = commands_to_run[index];
+        auto inputs = task.inputs;
+        const auto headers = task.track_headers ? read_dependencies(task.depfile) : std::nullopt;
+        if (headers) inputs.insert(inputs.end(), headers->begin(), headers->end());
+        Json::Array arguments;
+        for (const auto& arg : task.args) arguments.emplace_back(arg);
+        const auto previous = old.find(task.source);
+        const bool upstream_rebuilt = std::ranges::any_of(deps[index], [&](std::size_t i) { return rebuilt[i] != 0; });
+        const bool dirty = force || upstream_rebuilt || (task.track_headers && !headers) ||
+            previous == old.end() || previous->second["arguments"].dump() != Json(arguments).dump() ||
+            outdated(task.object, inputs) || (task.bmi && outdated(task.pcm, inputs));
+        if (dirty) {
+            print_command("cm", task.args, !quiet && !c.progress);
+            const auto cleanup = [&] {
+                fs::remove(task.object);
+                if (task.bmi) fs::remove(task.pcm);
+                if (task.track_headers) fs::remove(task.depfile);
+            };
+            cleanup();
+            try { run(task.args, settings.stream); }
+            catch (...) {
+                cleanup();
+                throw;
+            }
+            rebuilt[index] = 1;
+        }
+        entries[index] = Json::Object{{"directory", directory}, {"file", task.source}, {"arguments", std::move(arguments)}};
+        if (c.progress && !quiet) {
+            std::scoped_lock lock(progress_mutex);
+            progress(c, ++done, units.size() + 1, utf8(units[index].file.filename()) + (dirty ? "" : " (cached)"), quiet);
+        }
+    });
+    const auto compiled = static_cast<std::size_t>(std::ranges::count(rebuilt, 1));
+    for (std::size_t i = 0; i < units.size(); ++i)
+        commands.emplace(commands_to_run[i].source, std::move(entries[i]));
     save_database(project_db, commands);
-    const auto root_db = root / "compile_commands.json";
-    if (root_db != project_db) {
-        auto merged = database(root_db);
-        std::erase_if(merged, [&](const auto& entry) {
-            auto file = path(entry.first);
-            return within(file, output_dir / "generated") ||
-                std::ranges::any_of(sources, [&](const auto& source) { return within(file, source); });
-        });
-        for (const auto& [file, entry] : commands) merged.insert_or_assign(file, entry);
-        save_database(root_db, merged);
-    }
+
     const auto output = finish_product(c, driver, compiler.parent_path(), objects, force, quiet);
     progress(c, units.size() + 1, units.size() + 1, utf8(output.filename()), quiet);
     const auto tag = c.product == "nxflat" ? "flat" : c.product == "library" ? "lib" : "host";
-    if (!quiet) std::cout << "    " << tag << ' ' << utf8(output) << " (" << compiled << " compiled, "
+    if (!quiet) LogLine() << "    " << color("\x1b[32m") << tag << color("\x1b[0m") << ' ' << utf8(output) << " (" << compiled << " compiled, "
                           << units.size() - compiled << " cached)\n";
     return output;
 }
@@ -421,7 +490,7 @@ void pack(const Layout& layout, const fs::path& intermediate, const fs::path& ob
     for (const auto& [name, address] : layout) {
         const auto blob = directory / path(name + ".bin");
         fs::remove(blob);
-        run({utf8(objcopy), "-O", "binary", "-j", "." + name, utf8(intermediate), utf8(blob)});
+        run({utf8(objcopy), "-O", "binary", "-j", "." + name, utf8(intermediate), utf8(blob)}, settings.stream);
         const auto contents = fs::is_regular_file(blob) ? read(blob) : std::string{};
         little(header, name.size(), 2);
         header += name;
@@ -439,7 +508,7 @@ void pack(const Layout& layout, const fs::path& intermediate, const fs::path& ob
 }
 void execute(const Args& args, const fs::path& output, const char* stage, bool verbose) {
     print_command(stage, args, verbose);
-    try { run(args); }
+    try { run(args, settings.stream); }
     catch (...) {
         fs::remove(output);
         throw;
@@ -681,21 +750,51 @@ void append_unique(std::vector<T>& list, T value) {
     if (std::ranges::find(list, value) == list.end()) list.push_back(std::move(value));
 }
 struct Result { fs::path output_dir, output; };
+struct DependencyExport {
+    std::size_t provider;
+    Variables variables;
+    Document items;
+};
+struct Project {
+    Config config;
+    std::vector<DependencyExport> exports;
+};
+
 class Builder {
 public:
     Builder(fs::path root, bool force, bool quiet) : root(std::move(root)), force(force), quiet(quiet) {}
-    Result build(const fs::path& target) {
-        const auto file = project_path(target, root);
-        if (const auto found = built.find(file); found != built.end()) return found->second;
-        if (!active.insert(file).second) throw std::runtime_error("cyclic project dependency: " + utf8(file));
-        auto c = load_config(file, root);
-        for (const auto& dep : c.depends) build(dep);
-        std::set<fs::path> used;
-        for (const auto& dep : c.dependencies) use(c, dep, used);
-        const auto output = produce(c, root, force, quiet);
-        active.erase(file);
-        return built.emplace(file, Result{c.output_dir, output}).first->second;
+
+    std::size_t build(const Paths& targets, unsigned jobs, bool show_graph) {
+        std::vector<std::size_t> requested;
+        for (const auto& target : targets) requested.push_back(plan(target));
+        if (show_graph) {
+            write_graph();
+            return 0;
+        }
+        const auto project_jobs = std::min<std::size_t>(jobs, graph::maximum_layer(edges));
+        const auto compile_jobs = static_cast<unsigned>(jobs / std::max<std::size_t>(1, project_jobs));
+        std::vector<Result> results(projects.size());
+        graph::execute(edges, static_cast<unsigned>(std::max<std::size_t>(1, project_jobs)), [&](std::size_t index) {
+            auto& project = projects[index];
+            for (auto& dependency : project.exports) {
+                const auto& result = results[dependency.provider];
+                auto& vars = dependency.variables;
+                vars["DEP_BUILD_ROOT"] = result.output_dir;
+                vars["DEP_PCM"] = result.output_dir / "pcm";
+                vars["DEP_LIBRARY"] = result.output.empty() ? result.output_dir / "library" : result.output;
+                for (const auto& item : dependency.items) {
+                    const auto value = absolute(path_value(evaluate(item.expr, vars)), root);
+                    append_unique(item.name == "AddModulePath" ? project.config.modules : project.config.libraries, value);
+                }
+            }
+            results[index] = {project.config.output_dir, produce(project.config, root, force, quiet, compile_jobs)};
+        });
+        merge_databases(results);
+        return static_cast<std::size_t>(std::ranges::count_if(requested, [&](std::size_t index) {
+            return !results[index].output.empty();
+        }));
     }
+
     void clean(const fs::path& target) {
         const auto c = load_config(project_path(target, root), root);
         if (!fs::exists(c.output_dir)) return;
@@ -704,16 +803,46 @@ public:
             std::ranges::any_of(c.extra_sources, [&](const auto& source) { return within(source, dir); }))
             throw std::runtime_error("refusing to clean a directory containing project sources: " + utf8(dir));
         fs::remove_all(dir);
-        if (!quiet) std::cout << "cleaned " << utf8(dir) << '\n';
+        if (!quiet) LogLine() << "cleaned " << utf8(dir) << '\n';
     }
+
 private:
     fs::path root;
     bool force, quiet;
-    std::map<fs::path, Result> built;
+    std::map<fs::path, std::size_t> indices;
+    std::map<fs::path, fs::path> output_dirs;
     std::set<fs::path> active;
+    std::vector<Project> projects;
+    graph::Edges edges;
 
-    void use(Config& c, const fs::path& file, std::set<fs::path>& used) {
+    std::size_t plan(const fs::path& target) {
+        const auto file = project_path(target, root);
+        if (active.contains(file)) throw std::runtime_error("cyclic project dependency: " + utf8(file));
+        if (const auto known = indices.find(file); known != indices.end()) return known->second;
+        active.insert(file);
+        const auto index = projects.size();
+        indices.emplace(file, index);
+        projects.emplace_back();
+        edges.emplace_back();
+        Project project{load_config(file, root), {}};
+        const auto output = fs::weakly_canonical(project.config.output_dir);
+        if (const auto [existing, inserted] = output_dirs.emplace(output, file); !inserted)
+            throw std::runtime_error("projects share build directory " + utf8(output) + ": " +
+                                     utf8(existing->second) + " and " + utf8(file));
+        for (const auto& dependency : project.config.depends) {
+            const auto provider = plan(dependency);
+            append_unique(edges[index], provider);
+        }
+        std::set<fs::path> used;
+        for (const auto& dependency : project.config.dependencies) use(project, index, dependency, used);
+        projects[index] = std::move(project);
+        active.erase(file);
+        return index;
+    }
+
+    void use(Project& project, std::size_t index, const fs::path& file, std::set<fs::path>& used) {
         if (!used.insert(file).second) return;
+        auto& c = project.config;
         Variables vars{{"PROJECT_ROOT", root}, {"NEXTOS_MAIN_ROOT", root}};
         fs::path provider;
         Paths nested;
@@ -738,37 +867,117 @@ private:
             else if (item.name == "Dependency") name = scalar(value);
             else if (item.name == "Version") version = scalar(value);
         }
-        if (!quiet) std::cout << "    use " << name << ' ' << version << " (" << utf8(file) << ")\n";
+        if (!quiet) LogLine() << "    use " << name << ' ' << version << " (" << utf8(file) << ")\n";
         if (provider.empty()) throw std::runtime_error(utf8(file) + ": RequireProject is required");
-        const auto result = build(provider);
-        vars["DEP_BUILD_ROOT"] = result.output_dir;
-        vars["DEP_PCM"] = result.output_dir / "pcm";
-        vars["DEP_LIBRARY"] = result.output.empty() ? result.output_dir / "library" : result.output;
-        for (const auto& item : exports) {
-            auto value = absolute(path_value(evaluate(item.expr, vars)), root);
-            append_unique(item.name == "AddModulePath" ? c.modules : c.libraries, std::move(value));
+        const auto dependency = plan(provider);
+        append_unique(edges[index], dependency);
+        project.exports.push_back({dependency, std::move(vars), std::move(exports)});
+        for (const auto& path : nested) use(project, index, path, used);
+    }
+
+    void merge_databases(const std::vector<Result>& results) const {
+        const auto root_db = root / "compile_commands.json";
+        auto merged = database(root_db);
+        for (std::size_t i = 0; i < projects.size(); ++i) {
+            if (results[i].output.empty()) continue;
+            const auto& config = projects[i].config;
+            const auto project_db = config.output_dir / "compile_commands.json";
+            if (project_db == root_db) continue;
+            std::erase_if(merged, [&](const auto& entry) {
+                const auto file = path(entry.first);
+                return within(file, config.source) || within(file, config.output_dir / "generated") ||
+                    std::ranges::any_of(config.extra_sources, [&](const auto& source) { return within(file, source); });
+            });
+            for (auto& [file, entry] : database(project_db)) merged.insert_or_assign(file, std::move(entry));
         }
-        for (const auto& dep : nested) use(c, dep, used);
+        save_database(root_db, merged);
+    }
+
+    void write_graph() const {
+        std::ostringstream dot;
+        dot << "digraph nextbuild {\n  rankdir=LR;\n";
+        for (std::size_t i = 0; i < projects.size(); ++i) {
+            const auto& config = projects[i].config;
+            const auto project = "p" + std::to_string(i);
+            dot << "  " << project << " [shape=box,label=" << Json::quote(config.name + " (link/archive)") << "];\n";
+            Paths sources{config.source};
+            sources.insert(sources.end(), config.extra_sources.begin(), config.extra_sources.end());
+            auto units = collect(sources, config.output_dir, {});
+            if (needs_platform_module(config, units)) {
+                Unit generated;
+                generated.file = config.output_dir / "generated/cmake_generated.cppm";
+                generated.module = "cmake_generated";
+                generated.bmi = true;
+                units.insert(units.begin(), std::move(generated));
+            }
+            const auto deps = unit_dependencies(units, false);
+            const auto unit_id = [&](std::size_t index) { return project + "u" + std::to_string(index); };
+            for (std::size_t j = 0; j < units.size(); ++j) {
+                const auto node = unit_id(j);
+                auto label = utf8(units[j].file.lexically_relative(root));
+                if (label.empty()) label = utf8(units[j].file);
+                dot << "  " << node << " [label=" << Json::quote(label) << "];\n";
+                dot << "  " << node << " -> " << project << ";\n";
+                for (const auto dependency : deps[j]) dot << "  " << unit_id(dependency) << " -> " << node << ";\n";
+                if (deps[j].empty())
+                    for (const auto dependency : edges[i]) dot << "  p" << dependency << " -> " << node << ";\n";
+            }
+            if (units.empty())
+                for (const auto dependency : edges[i]) dot << "  p" << dependency << " -> " << project << ";\n";
+        }
+        std::cout << dot.str() << "}\n";
     }
 };
 }
 
 export int cli(const Args& args) {
     auto root = root_from(fs::current_path());
-    bool clean = false, force = false, quiet = false, list = false, options = true;
+    bool clean = false, force = false, quiet = false, list = false, options = true, show_graph = false;
+    auto jobs = std::clamp(std::thread::hardware_concurrency(), 1u, 32u);
+    std::string color_mode = "auto";
     Paths targets;
     for (std::size_t index = 0; index < args.size(); ++index) {
         const auto& arg = args[index];
         if (options && arg == "--") options = false;
         else if (options && (arg == "--help" || arg == "-h")) {
-            std::cout << "Usage: nextbuild [--root DIR] [--list] [--clean] [-B|--force] [-q|--quiet] [TARGET ...]\n"
+            std::cout << "Usage: nextbuild [--root DIR] [--list] [--clean] [-B|--force] [-q|--quiet] [-j JOBS] [TARGET ...]\n"
+                         "       nextbuild [--root DIR] --graph [TARGET ...]\n"
+                         "       nextbuild [--color auto|always|never] [--output on-demand|stream] [TARGET ...]\n"
                          "       nextbuild --version\n"
                          "       nextbuild lsp [--stdio]\n";
             return 0;
         } else if (options && arg == "--version") {
             std::cout << "nextbuild " << nextbuild_version << '\n';
             return 0;
-        } else if (options && arg == "--root") {
+        } else if (options && (arg == "-j" || arg.starts_with("-j") || arg == "--jobs" || arg.starts_with("--jobs="))) {
+            std::string_view count;
+            if (arg == "-j" || arg == "--jobs") {
+                if (++index == args.size()) throw std::runtime_error("expected job count");
+                count = args[index];
+            } else count = std::string_view(arg).substr(arg.starts_with("--") ? 7 : 2);
+            if (count.empty()) throw std::runtime_error("expected job count");
+            const auto [end, error] = std::from_chars(count.data(), count.data() + count.size(), jobs);
+            if (error != std::errc{} || end != count.data() + count.size() || jobs == 0 || jobs > 256)
+                throw std::runtime_error("job count must be between 1 and 256");
+        } else if (options && (arg == "--color" || arg.starts_with("--color=") ||
+                               arg == "--output" || arg.starts_with("--output="))) {
+            const bool output = arg.starts_with("--output");
+            auto value = arg.find('=');
+            std::string mode;
+            if (value == std::string::npos) {
+                if (++index == args.size()) throw std::runtime_error("expected option value");
+                mode = args[index];
+            } else mode = arg.substr(value + 1);
+            if (output) {
+                if (mode != "stream" && mode != "on-demand") throw std::runtime_error("expected stream or on-demand");
+                settings.stream = mode == "stream";
+            } else {
+                if (mode != "auto" && mode != "always" && mode != "never")
+                    throw std::runtime_error("expected auto, always or never");
+                color_mode = std::move(mode);
+            }
+        } else if (options && arg == "--graph") show_graph = true;
+        else if (options && arg == "--root") {
             if (++index == args.size()) { std::cerr << "nextbuild: --root requires a directory\n"; return 2; }
             root = fs::weakly_canonical(fs::absolute(path(args[index])));
         } else if (options && arg.starts_with("--root=")) root = fs::weakly_canonical(fs::absolute(path(arg.substr(7))));
@@ -789,15 +998,18 @@ export int cli(const Args& args) {
         for (const auto& target : targets) std::cout << utf8(target.lexically_relative(root)) << '\n';
         return 0;
     }
-    Builder builder(root, force, quiet);
+    if (show_graph && clean) throw std::runtime_error("--graph cannot be combined with --clean");
+    const bool use_color = color_mode == "always" || (color_mode == "auto" && !no_color_requested());
+    const bool terminal = use_color && terminal_color();
+    settings.color = color_mode == "always" || terminal;
+    Builder builder(root, force, quiet || show_graph);
     if (clean) {
         for (const auto& target : targets) builder.clean(target);
         return 0;
     }
     if (targets.empty()) throw std::runtime_error("no .nextbuild files found under " + utf8(root));
-    std::size_t built = 0;
-    for (const auto& target : targets) if (!builder.build(target).output.empty()) ++built;
-    if (!quiet) std::cout << "nextbuild: finished " << built << '/' << targets.size() << " project(s)\n";
+    const auto built = builder.build(targets, jobs, show_graph);
+    if (!quiet && !show_graph) std::cout << "nextbuild: finished " << built << '/' << targets.size() << " project(s)\n";
     return 0;
 }
 }
