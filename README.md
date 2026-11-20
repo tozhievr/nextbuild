@@ -101,6 +101,10 @@ or `ar`, and NXFL requires `ld.lld` and `llvm-objcopy`.
 | `nextbuild --root DIR --list` | Uses an explicit workspace root |
 | `nextbuild -q` | Hides routine build output |
 
+Use `nextbuild -j 8` for a parallel build or `nextbuild --graph > build.dot`
+to export the dependency graph. See [parallel builds and System Runtime](docs/runtime.md)
+for output modes, colors and the subprocess API.
+
 See the [manifest reference](docs/manifest.md) for product types, dependency
 exports, compile flags and NXFL layouts.
 
