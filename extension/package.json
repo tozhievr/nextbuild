@@ -2,7 +2,7 @@
   "name": "nextbuild",
   "displayName": "Nextbuild",
   "description": "Language support and build tasks for Nextbuild manifests",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "publisher": "nextbuild-tools",
   "engines": {
     "vscode": "^1.82.0"
